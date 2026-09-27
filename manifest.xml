@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+           xsi:type="TaskPaneApp">
+
+  <!-- এই GUID-টা এমনিই থাকুক, পরিবর্তনের দরকার নেই -->
+  <Id>b4c1a2e0-9f3d-4a7e-8c2b-1a2b3c4d5e6f</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Personal</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Bijoy to Unicode" />
+  <Description DefaultValue="Convert Bijoy/SutonnyMJ Bangla text to Unicode directly inside Word." />
+
+  <!--
+    নিচের সবগুলো জায়গায় YOUR-GITHUB-USERNAME এবং REPO-NAME বদলে
+    আপনার নিজের GitHub Pages URL বসান, যেমন:
+    https://rahim123.github.io/bijoy2unicode/
+  -->
+  <IconUrl DefaultValue="https://YOUR-GITHUB-USERNAME.github.io/REPO-NAME/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://YOUR-GITHUB-USERNAME.github.io/REPO-NAME/icon-80.png" />
+  <SupportUrl DefaultValue="https://github.com/" />
+
+  <AppDomains>
+  </AppDomains>
+
+  <Hosts>
+    <Host Name="Document" />
+  </Hosts>
+
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://YOUR-GITHUB-USERNAME.github.io/REPO-NAME/taskpane.html" />
+  </DefaultSettings>
+
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Bijoy.Group">
+                <Label resid="Group.Label" />
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16x16" />
+                  <bt:Image size="32" resid="Icon.32x32" />
+                  <bt:Image size="80" resid="Icon.80x80" />
+                </Icon>
+                <Control xsi:type="Button" id="Bijoy.TaskpaneButton">
+                  <Label resid="TaskpaneButton.Label" />
+                  <Supertip>
+                    <Title resid="TaskpaneButton.Label" />
+                    <Description resid="TaskpaneButton.Tooltip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16x16" />
+                    <bt:Image size="32" resid="Icon.32x32" />
+                    <bt:Image size="80" resid="Icon.80x80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>ButtonId1</TaskpaneId>
+                    <SourceLocation resid="Taskpane.Url" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16x16" DefaultValue="https://YOUR-GITHUB-USERNAME.github.io/REPO-NAME/icon-16.png" />
+        <bt:Image id="Icon.32x32" DefaultValue="https://YOUR-GITHUB-USERNAME.github.io/REPO-NAME/icon-32.png" />
+        <bt:Image id="Icon.80x80" DefaultValue="https://YOUR-GITHUB-USERNAME.github.io/REPO-NAME/icon-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://YOUR-GITHUB-USERNAME.github.io/REPO-NAME/taskpane.html" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Group.Label" DefaultValue="Bangla Convert" />
+        <bt:String id="TaskpaneButton.Label" DefaultValue="Bijoy to Unicode" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Convert selected Bijoy (SutonnyMJ) Bangla text to Unicode." />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>
