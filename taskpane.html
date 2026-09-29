@@ -29,7 +29,7 @@
 <body>
 
   <h1>Bijoy → Unicode কনভার্টার</h1>
-  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v6</b></p>
+  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v8</b></p>
 
   <div class="card">
     <label for="fontSelect">রূপান্তরের পর যে ইউনিকোড ফন্ট বসবে</label>
@@ -156,6 +156,7 @@ function convertBijoyToUnicode(input) {
        .replace(/\u09CD\u200C\u09CD\u200C/g, '\u09CD\u200C');
   return s;
 }
+
 // ==CONVERTER-END==
 
 function setStatus(msg, kind) {
@@ -230,7 +231,26 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       return;
     }
 
-    const inserted = targets.map(([w, conv]) => w.insertText(conv, Word.InsertLocation.replace));
+    // শেষ শব্দ থেকে শুরুর দিকে বদলানো, যাতে আগের রেঞ্জ সরে না যায়
+    targets.reverse();
+    let inserted = targets.map(([w, conv]) => w.insertText(conv, Word.InsertLocation.replace));
+    await context.sync();
+
+    // যাচাই: সত্যিই বদলেছে কিনা; না বদলালে আবার চেষ্টা
+    inserted.forEach((r) => r.load('text'));
+    await context.sync();
+    const retryIdx = [];
+    inserted.forEach((r, i) => { if (r.text.trim() !== targets[i][1].trim()) retryIdx.push(i); });
+    for (const i of retryIdx) {
+      inserted[i] = targets[i][0].insertText(targets[i][1], Word.InsertLocation.replace);
+    }
+    let failed = [];
+    if (retryIdx.length) {
+      await context.sync();
+      retryIdx.forEach((i) => inserted[i].load('text'));
+      await context.sync();
+      failed = retryIdx.filter((i) => inserted[i].text.trim() !== targets[i][1].trim());
+    }
     if (fontName) {
       inserted.forEach((r) => { r.font.name = fontName; });
       await context.sync();
@@ -244,7 +264,10 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
 
     setStatus(targets.length + 'টি শব্দ কনভার্ট হয়েছে।' +
       (skipped ? ' ইংরেজি/অন্য ফন্টের ' + skipped + 'টি শব্দ বাদ দেওয়া হয়েছে।' : '') +
-      (mixed ? ' মিশ্র ফন্টের ' + mixed + 'টি শব্দ বাদ গেছে।' : ''), 'ok');
+      (mixed ? ' মিশ্র ফন্টের ' + mixed + 'টি শব্দ বাদ গেছে।' : '') +
+      (retryIdx.length ? ' ' + (retryIdx.length - failed.length) + 'টি শব্দ দ্বিতীয়বার চেষ্টায় ঠিক হয়েছে।' : '') +
+      (failed.length ? ' ⚠ ' + failed.length + 'টি শব্দ বদলানো যায়নি: ' + failed.slice(0, 8).map((i) => targets[i][0].text).join(' , ') : ''),
+      failed.length ? 'err' : 'ok');
   }).catch((err) => setStatus('সমস্যা হয়েছে: ' + err.message, 'err'));
 });
 </script>
