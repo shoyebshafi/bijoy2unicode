@@ -205,10 +205,21 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       return;
     }
 
-    const inserted = range.insertText(convertBijoyToUnicode(range.text), Word.InsertLocation.replace);
+    const original = range.text;
+    const converted = convertBijoyToUnicode(original);
+    // তুলনার জন্য প্যানেলের বক্সেও দেখানো হবে
+    document.getElementById('quickInput').value = original;
+    document.getElementById('quickOutput').value = converted;
+
+    const inserted = range.insertText(converted, Word.InsertLocation.replace);
     if (fontName) {
       inserted.font.name = fontName;
-      try { inserted.font.nameBi = fontName; } catch (e) {}
+      await context.sync();
+      // বাংলা complex-script ফন্ট স্লটগুলোও সেট করা (Word সংস্করণ অনুযায়ী যেটা আছে)
+      const slots = ['nameBidirectional', 'nameBi', 'nameAscii', 'nameOther', 'nameFarEast'];
+      for (const p of slots) {
+        try { inserted.font[p] = fontName; await context.sync(); } catch (e) { /* এই Word-এ নেই */ }
+      }
     }
     await context.sync();
 
