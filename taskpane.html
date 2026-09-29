@@ -362,15 +362,19 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
     }
 
     const converted = convertBijoyToUnicode(range.text);
-    range.insertText(converted, Word.InsertLocation.replace);
-    await context.sync();
+
+    // Keep a direct reference to the replaced range. Using getSelection()
+    // after replacement can retain Word's previous Bengali/RTL font.
+    const newRange = range.insertText(converted, Word.InsertLocation.replace);
 
     if (fontName) {
-      // reload the (now replaced) selection so we can set its font
-      const newRange = context.document.getSelection();
+      // Bengali is handled by Word's bidirectional font slot.
+      // Set both the general font and the RTL/BiDi font explicitly.
       newRange.font.name = fontName;
-      await context.sync();
+      newRange.font.nameBidirectional = fontName;
     }
+
+    await context.sync();
 
     setStatus('কনভার্ট সম্পন্ন হয়েছে।', true);
   }).catch((err) => {
