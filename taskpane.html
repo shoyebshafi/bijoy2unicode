@@ -361,24 +361,21 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       return;
     }
 
-    const converted = convertBijoyToUnicode(range.text);
+    // Convert first, then normalize Bengali Unicode to NFC.
+    // This is important for characters such as ড়/ঢ়/য়: NFC composes
+    // their base-letter + nukta sequence into the proper Unicode codepoint,
+    // preventing Word/font fallback from placing the nukta (dot) incorrectly.
+    const converted = convertBijoyToUnicode(range.text).normalize('NFC');
 
-    // Replace the selected Bijoy text and keep the exact inserted Range.
-    // This avoids changing the document's paragraph/table structure.
+    // Keep the exact inserted range; do not re-select the document.
     const insertedRange = range.insertText(
       converted,
       Word.InsertLocation.replace
     );
 
     if (fontName) {
-      /*
-       * Apply the font directly to the newly inserted Unicode text.
-       * Bengali uses the bidirectional font slot in Word.
-       *
-       * We intentionally do NOT use insertOoxml() here. That method can
-       * introduce a new paragraph/run structure and can disturb existing
-       * document formatting and Bengali shaping.
-       */
+      // Apply only through the Word Font API. Avoid injecting custom OOXML,
+      // which can interfere with Bengali shaping and existing document layout.
       insertedRange.font.name = fontName;
       insertedRange.font.nameBidirectional = fontName;
     }
