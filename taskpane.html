@@ -29,7 +29,7 @@
 <body>
 
   <h1>Bijoy → Unicode কনভার্টার</h1>
-  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v5</b></p>
+  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v6</b></p>
 
   <div class="card">
     <label for="fontSelect">রূপান্তরের পর যে ইউনিকোড ফন্ট বসবে</label>
@@ -45,6 +45,10 @@
 
   <div class="card">
     <label>ডকুমেন্টে নির্বাচিত (selected) টেক্সট কনভার্ট করুন</label>
+    <label style="font-weight:400; display:flex; gap:6px; align-items:flex-start; margin-bottom:0;">
+      <input type="checkbox" id="onlyBijoy" checked style="margin-top:3px;">
+      <span>শুধু Bijoy ফন্টের (SutonnyMJ ইত্যাদি) শব্দ কনভার্ট করুন; ইংরেজি/অন্য ফন্টের লেখা যেমন আছে তেমন থাকবে</span>
+    </label>
     <button id="convertSelectionBtn">নির্বাচিত টেক্সট কনভার্ট করুন</button>
     <div id="status"></div>
   </div>
@@ -195,38 +199,52 @@ document.getElementById('copyBtn').addEventListener('click', async () => {
   setStatus('কপি হয়েছে।', 'ok');
 });
 
+function isBijoyFont(name) {
+  return /MJ/.test(name) || /bijoy|sutonny/i.test(name);
+}
+
 document.getElementById('convertSelectionBtn').addEventListener('click', () => {
   const fontName = document.getElementById('fontSelect').value;
+  const onlyBijoy = document.getElementById('onlyBijoy').checked;
 
   Word.run(async (context) => {
-    const range = context.document.getSelection();
-    range.load('text');
+    const words = context.document.getSelection().getTextRanges([' '], true);
+    words.load('items/text,items/font/name');
     await context.sync();
 
-    if (!range.text || range.text.trim() === '') {
-      setStatus('আগে ডকুমেন্টে বাংলা (Bijoy) টেক্সট সিলেক্ট করুন।', 'err');
+    const targets = [];
+    let skipped = 0, mixed = 0;
+    for (const w of words.items) {
+      if (!w.text || !w.text.trim()) continue;
+      const fn = w.font.name || '';
+      if (onlyBijoy) {
+        if (fn === '') { mixed++; continue; }          // একই শব্দে একাধিক ফন্ট
+        if (!isBijoyFont(fn)) { skipped++; continue; } // ইংরেজি/অন্য ফন্ট
+      }
+      const conv = convertBijoyToUnicode(w.text);
+      if (conv !== w.text) targets.push([w, conv]);
+    }
+
+    if (!targets.length) {
+      setStatus('কনভার্ট করার মতো Bijoy টেক্সট পাওয়া যায়নি। আগে ডকুমেন্টে লেখা সিলেক্ট করুন।', 'err');
       return;
     }
 
-    const original = range.text;
-    const converted = convertBijoyToUnicode(original);
-    // তুলনার জন্য প্যানেলের বক্সেও দেখানো হবে
-    document.getElementById('quickInput').value = original;
-    document.getElementById('quickOutput').value = converted;
-
-    const inserted = range.insertText(converted, Word.InsertLocation.replace);
+    const inserted = targets.map(([w, conv]) => w.insertText(conv, Word.InsertLocation.replace));
     if (fontName) {
-      inserted.font.name = fontName;
+      inserted.forEach((r) => { r.font.name = fontName; });
       await context.sync();
       // বাংলা complex-script ফন্ট স্লটগুলোও সেট করা (Word সংস্করণ অনুযায়ী যেটা আছে)
       const slots = ['nameBidirectional', 'nameBi', 'nameAscii', 'nameOther', 'nameFarEast'];
       for (const p of slots) {
-        try { inserted.font[p] = fontName; await context.sync(); } catch (e) { /* এই Word-এ নেই */ }
+        try { inserted.forEach((r) => { r.font[p] = fontName; }); await context.sync(); } catch (e) { /* এই Word-এ নেই */ }
       }
     }
     await context.sync();
 
-    setStatus('কনভার্ট সম্পন্ন হয়েছে।' + (fontName ? ' ফন্ট: ' + fontName : ''), 'ok');
+    setStatus(targets.length + 'টি শব্দ কনভার্ট হয়েছে।' +
+      (skipped ? ' ইংরেজি/অন্য ফন্টের ' + skipped + 'টি শব্দ বাদ দেওয়া হয়েছে।' : '') +
+      (mixed ? ' মিশ্র ফন্টের ' + mixed + 'টি শব্দ বাদ গেছে।' : ''), 'ok');
   }).catch((err) => setStatus('সমস্যা হয়েছে: ' + err.message, 'err'));
 });
 </script>
