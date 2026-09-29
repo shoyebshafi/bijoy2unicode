@@ -7,76 +7,20 @@
 <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
 <style>
   * { box-sizing: border-box; }
-  body {
-    font-family: "Segoe UI", Tahoma, sans-serif;
-    margin: 0;
-    padding: 16px;
-    background: #f7f9f8;
-    color: #1b1b1b;
-  }
-  h1 {
-    font-size: 16px;
-    margin: 0 0 4px 0;
-    color: #00563f;
-  }
-  p.sub {
-    font-size: 12px;
-    color: #666;
-    margin: 0 0 16px 0;
-  }
-  .card {
-    background: #fff;
-    border: 1px solid #e2e2e2;
-    border-radius: 8px;
-    padding: 12px;
-    margin-bottom: 14px;
-  }
-  label {
-    font-size: 12px;
-    font-weight: 600;
-    display: block;
-    margin-bottom: 6px;
-    color: #333;
-  }
-  select, textarea {
-    width: 100%;
-    font-family: inherit;
-    font-size: 13px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    padding: 8px;
-  }
-  textarea {
-    min-height: 90px;
-    resize: vertical;
-  }
-  button {
-    background: #00693e;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 10px 14px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    width: 100%;
-    margin-top: 8px;
-  }
-  button:hover { background: #00542f; }
-  button.secondary {
-    background: #eee;
-    color: #222;
-  }
-  button.secondary:hover { background: #ddd; }
-  #status {
-    font-size: 12px;
-    margin-top: 8px;
-    min-height: 16px;
-  }
-  #status.ok { color: #00693e; }
-  #status.err { color: #b3261e; }
-  .row { display: flex; gap: 8px; }
-  .row > * { flex: 1; }
+  body { font-family: "Kalpurush","Siyam Rupali","Nirmala UI","Segoe UI",sans-serif; margin:0; padding:16px; background:#f7f9f8; color:#1b1b1b; }
+  h1 { font-size:16px; margin:0 0 4px; color:#00563f; }
+  p.sub { font-size:12px; color:#666; margin:0 0 16px; }
+  .card { background:#fff; border:1px solid #e2e2e2; border-radius:8px; padding:12px; margin-bottom:14px; }
+  label { font-size:12px; font-weight:600; display:block; margin-bottom:6px; color:#333; }
+  select, textarea { width:100%; font-family:inherit; font-size:14px; border:1px solid #ccc; border-radius:6px; padding:8px; }
+  textarea { min-height:90px; resize:vertical; }
+  button { background:#00693e; color:#fff; border:none; border-radius:6px; padding:10px 14px; font-size:13px; font-weight:600; cursor:pointer; width:100%; margin-top:8px; font-family:inherit; }
+  button:hover { background:#00542f; }
+  button.secondary { background:#eee; color:#222; }
+  button.secondary:hover { background:#ddd; }
+  #status { font-size:12px; margin-top:8px; min-height:16px; }
+  #status.ok { color:#00693e; } #status.err { color:#b3261e; } #status.info { color:#666; }
+  .row { display:flex; gap:8px; } .row > * { flex:1; }
 </style>
 </head>
 <body>
@@ -115,218 +59,121 @@
   </div>
 
 <script>
-function isBanglaPreKar(c) {
-  return c === 'ি' || c === 'ৈ' || c === 'ে';
-}
-function isBanglaPostKar(c) {
-  return c === 'া' || c === 'ো' || c === 'ৌ' || c === 'ৗ' || c === 'ু' || c === 'ূ' || c === 'ী' || c === 'ৃ';
-}
-function isBanglaKar(c) {
-  return isBanglaPreKar(c) || isBanglaPostKar(c);
-}
-function isBanglaBanjonborno(c) {
-  if (!c) return false;
-  return 'কখগঘঙচছজঝঞটঠডঢণতথদধনপফবভমযরলশষসহড়ঢ়য়ৎংঃঁ'.indexOf(c) !== -1;
-}
-function isBanglaNukta(c) {
-  return c === 'ঁ';
-}
-function isBanglaHalant(c) {
-  return c === '্';
-}
-function isSpaceChar(c) {
-  return c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === undefined;
-}
+// ==CONVERTER-START==
+const REPH = '\uE000'; // Bijoy-এর © (রেফ) — পরে সঠিক জায়গায় বসানো হয়
 
-const preConversionMap = [
-  [' +', ' '],
-  ['yy', 'y'],
-  ['vv', 'v'],
-  ['\u00AD\u00AD', '\u00AD'],
-  ['y&', 'y'],
-  ['„&', '„'],
-  ['‡u', 'u‡'],
-  ['wu', 'uw'],
-  [' ,', ',']
-];
+// একক অক্ষর → ইউনিকোড
+const MAP = {};
+(function () {
+  const keys = 'KLMNOPQRSTUVWXYZ_`abcdefghijklmnopqrstu';
+  const vals = ['ক','খ','গ','ঘ','ঙ','চ','ছ','জ','ঝ','ঞ','ট','ঠ','ড','ঢ','ণ','ত',
+                'থ','দ','ধ','ন','প','ফ','ব','ভ','ম','য','র','ল','শ','ষ','স','হ',
+                'ড়','ঢ়','য়','ৎ','ং','ঃ','ঁ'];
+  for (let i = 0; i < keys.length; i++) MAP[keys[i]] = vals[i];
 
-const conversionMap = [
-  // vowels
-  ['Av', 'আ'], ['A', 'অ'], ['B', 'ই'], ['C', 'ঈ'], ['D', 'উ'], ['E', 'ঊ'],
-  ['F', 'ঋ'], ['G', 'এ'], ['H', 'ঐ'], ['I', 'ও'], ['J', 'ঔ'],
-  // consonants
-  ['K', 'ক'], ['L', 'খ'], ['M', 'গ'], ['N', 'ঘ'], ['O', 'ঙ'], ['P', 'চ'],
-  ['Q', 'ছ'], ['R', 'জ'], ['S', 'ঝ'], ['T', 'ঞ'], ['U', 'ট'], ['V', 'ঠ'],
-  ['W', 'ড'], ['X', 'ঢ'], ['Y', 'ণ'], ['Z', 'ত'], ['_', 'থ'], ['`', 'দ'],
-  ['a', 'ধ'], ['b', 'ন'], ['c', 'প'], ['d', 'ফ'], ['e', 'ব'], ['f', 'ভ'],
-  ['g', 'ম'], ['h', 'য'], ['i', 'র'], ['j', 'ল'], ['k', 'শ'], ['l', 'ষ'],
-  ['m', 'স'], ['n', 'হ'], ['o', 'ড়'], ['p', 'ঢ়'], ['q', 'য়'], ['r', 'ৎ'],
-  ['s', 'ং'], ['t', 'ঃ'], ['u', 'ঁ'],
-  // digits
-  ['0', '০'], ['1', '১'], ['2', '২'], ['3', '৩'], ['4', '৪'],
-  ['5', '৫'], ['6', '৬'], ['7', '৭'], ['8', '৮'], ['9', '৯'],
-  // kars
-  ['•', 'ঙ্'], ['v', 'া'], ['w', 'ি'], ['x', 'ী'], ['y', 'ু'], ['z', 'ু'],
-  ['“', 'ু'], ['–', 'ু'], ['~', 'ূ'], ['ƒ', 'ূ'], ['‚', 'ূ'],
-  ['„„', 'ৃ'], ['„', 'ৃ'], ['…', 'ৃ'],
-  ['†', 'ে'], ['‡', 'ে'], ['ˆ', 'ৈ'], ['‰', 'ৈ'], ['Š', 'ৗ'],
-  ['\\|', '।'], ['\\&', '্‌'],
-  // conjuncts / ligatures
-  ['\\^', '্ব'], ['‘', '্তু'], ['’', '্থ'], ['‹', '্ক'], ['Œ', '্ক্র'],
-  ['”', 'চ্'], ['—', '্ত'], ['˜', 'দ্'], ['™', 'দ্'], ['š', 'ন্'],
-  ['›', 'ন্'], ['œ', '্ন'], ['Ÿ', '্ব'], ['¡', '্ব'], ['¢', '্ভ'],
-  ['£', '্ভ্র'], ['¤', 'ম্'], ['¥', '্ম'], ['¦', '্ব'], ['§', '্ম'],
-  ['¨', '্য'], ['©', 'র্'], ['ª', '্র'], ['«', '্র'], ['¬', '্ল'],
-  ['\u00AD', '্ল'], ['®', 'ষ্'], ['¯', 'স্'], ['°', 'ক্ক'], ['±', 'ক্ট'],
-  ['²', 'ক্ষ্ণ'], ['³', 'ক্ত'], ['´', 'ক্ম'], ['µ', 'ক্র'], ['¶', 'ক্ষ'],
-  ['·', 'ক্স'], ['¸', 'গু'], ['¹', 'জ্ঞ'], ['º', 'গ্দ'], ['»', 'গ্ধ'],
-  ['¼', 'ঙ্ক'], ['½', 'ঙ্গ'], ['¾', 'জ্জ'], ['¿', '্ত্র'], ['À', 'জ্ঝ'],
-  ['Á', 'জ্ঞ'], ['Â', 'ঞ্চ'], ['Ã', 'ঞ্ছ'], ['Ä', 'ঞ্জ'], ['Å', 'ঞ্ঝ'],
-  ['Æ', 'ট্ট'], ['Ç', 'ড্ড'], ['È', 'ণ্ট'], ['É', 'ণ্ঠ'], ['Ê', 'ণ্ড'],
-  ['Ë', 'ত্ত'], ['Ì', 'ত্থ'], ['Í', 'ত্ম'], ['Î', 'ত্র'], ['Ï', 'দ্দ'],
-  ['Ð', '-'], ['Ñ', '-'], ['Ò', '"'], ['Ó', '"'], ['Ô', "'"], ['Õ', "'"],
-  ['Ö', '্র'], ['×', 'দ্ধ'], ['Ø', 'দ্ব'], ['Ù', 'দ্ম'], ['Ú', 'ন্ঠ'],
-  ['Û', 'ন্ড'], ['Ü', 'ন্ধ'], ['Ý', 'ন্স'], ['Þ', 'প্ট'], ['ß', 'প্ত'],
-  ['à', 'প্প'], ['á', 'প্স'], ['â', 'ব্জ'], ['ã', 'ব্দ'], ['ä', 'ব্ধ'],
-  ['å', 'ভ্র'], ['æ', 'ম্ন'], ['ç', 'ম্ফ'], ['è', '্ন'], ['é', 'ল্ক'],
-  ['ê', 'ল্গ'], ['ë', 'ল্ট'], ['ì', 'ল্ড'], ['í', 'ল্প'], ['î', 'ল্ফ'],
-  ['ï', 'শু'], ['ð', 'শ্চ'], ['ñ', 'শ্ছ'], ['ò', 'ষ্ণ'], ['ó', 'ষ্ট'],
-  ['ô', 'ষ্ঠ'], ['õ', 'ষ্ফ'], ['ö', 'স্খ'], ['÷', 'স্ট'], ['ø', 'স্ন'],
-  ['ù', 'স্ফ'], ['ú', '্প'], ['û', 'হু'], ['ü', 'হৃ'], ['ý', 'হ্ন'],
-  ['þ', 'হ্ম']
-];
+  const vow = 'ABCDEFGHIJ', vv = ['অ','ই','ঈ','উ','ঊ','ঋ','এ','ঐ','ও','ঔ'];
+  // A = অ, Av = আ (নিচে আলাদাভাবে সামলানো হয়েছে)
+  MAP['A'] = 'অ';
+  for (let i = 1; i < vow.length; i++) MAP[vow[i]] = vv[i];
+  '০১২৩৪৫৬৭৮৯'.split('').forEach((d, i) => MAP[String(i)] = d);
 
-const postConversionMap = [
-  ['০ঃ', '০:'], ['১ঃ', '১:'], ['২ঃ', '২:'], ['৩ঃ', '৩:'], ['৪ঃ', '৪:'],
-  ['৫ঃ', '৫:'], ['৬ঃ', '৬:'], ['৭ঃ', '৭:'], ['৮ঃ', '৮:'], ['৯ঃ', '৯:'],
-  [' ঃ', ' :'], [']ঃ', ']:'], ['\\[ঃ', '[:'],
-  ['\u00A0', ' '],
-  ['অা', 'আ'],
-  ['্‌্‌', '্‌']
-];
+  Object.assign(MAP, {
+    // কার
+    'v':'া','w':'ি','x':'ী','y':'ু','z':'ু','~':'ূ','ƒ':'ূ','‚':'ূ',
+    '„':'ৃ','…':'ৃ','†':'ে','‡':'ে','ˆ':'ৈ','‰':'ৈ','Š':'ৗ',
+    // বিরাম
+    '|':'।','&':'্‌',
+    // ফলা ও অর্ধ-বর্ণ
+    'Ö':'্র','ª':'্র','«':'্র','¨':'্য','¬':'্ল','\u00AD':'্ল',
+    'Ÿ':'্ব','¡':'্ব','¦':'্ব','^':'্ব','œ':'্ন','¥':'্ম','§':'্ম',
+    '¢':'্ভ','£':'্ভ্র','—':'্ত','’':'থ',
+    '¯':'স্','®':'ষ্','š':'ন্','›':'ন্','˜':'দ্','™':'দ্','¤':'ম্','”':'চ্','•':'ঙ্',
+    'ú':'প',
+    // যুক্তবর্ণ
+    '‘':'ত্তু','‹':'্ক','Œ':'্ক্র',
+    '°':'ক্ক','±':'ক্ট','²':'ক্ষ্ণ','³':'ক্ত','´':'ক্ম','µ':'ক্র','¶':'ক্ষ','ÿ':'ক্ষ','·':'ক্স',
+    '¸':'গু','¹':'জ্ঞ','º':'গ্দ','»':'গ্ধ','¼':'ঙ্ক','½':'ঙ্গ','¾':'জ্জ','¿':'্ত্র',
+    'À':'জ্ঝ','Á':'জ্ঞ','Â':'ঞ্চ','Ã':'ঞ্ছ','Ä':'ঞ্জ','Å':'ঞ্ঝ','Æ':'ট্ট','Ç':'ড্ড',
+    'È':'ণ্ট','É':'ণ্ঠ','Ê':'ণ্ড','Ë':'ত্ত','Ì':'ত্থ','Í':'ত','Î':'ত্র','Ï':'দ্দ',
+    '×':'দ্ধ','Ø':'দ্ব','Ù':'দ্ম','Ú':'ন্ঠ','Û':'ন্ড','Ü':'ন্ধ','Ý':'ন্স',
+    'Þ':'প্ট','ß':'প্ত','à':'প্প','á':'প্স','â':'ব্জ','ã':'ব্দ','ä':'ব্ধ','å':'ভ্র',
+    'æ':'ম্ন','ç':'ম্ফ','è':'্ন','é':'ল্ক','ê':'ল্গ','ë':'ল্ট','ì':'ল্ড','í':'ল্প','î':'ল্ফ',
+    'ï':'শু','ð':'শ্চ','ñ':'শ্ছ','ò':'ষ্ণ','ó':'ষ্ট','ô':'ষ্ঠ','õ':'ষ্ফ',
+    'ö':'স্খ','÷':'স্ট','ø':'স্ন','ù':'স্ফ','û':'হু','ü':'হৃ','ý':'হ্ন','þ':'হ্ম',
+    // যতিচিহ্ন
+    'Ð':'-','Ñ':'-','Ò':'"','Ó':'"','Ô':"'",'Õ':"'"
+  });
+  MAP['©'] = REPH;
+})();
 
-function applyMap(text, map) {
-  for (const [pattern, replacement] of map) {
-    text = text.replace(new RegExp(pattern, 'g'), replacement);
+// ব্যঞ্জন (+ নুক্তা) এবং যুক্তাক্ষর ক্লাস্টার
+const C  = '[\u0995-\u09B9]\u09BC?';
+const CL = C + '(?:\u09CD' + C + ')*';
+
+function convertBijoyToUnicode(input) {
+  let s = input.replace(/\u00A0/g, ' ');
+
+  // ১) অক্ষর-ভিত্তিক ম্যাপিং (Av → আ)
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === 'A' && s[i + 1] === 'v') { out += 'আ'; i++; continue; }
+    out += (ch in MAP) ? MAP[ch] : ch;
   }
-  return text;
+  s = out;
+
+  // ২) ড় ঢ় য় → বিয়োজিত রূপ (ড + ়) যাতে ক্লাস্টার ঠিকমতো ধরা যায়
+  s = s.replace(/\u09DC/g, '\u09A1\u09BC')
+       .replace(/\u09DD/g, '\u09A2\u09BC')
+       .replace(/\u09DF/g, '\u09AF\u09BC');
+
+  // ৩) দ্বিগুণ হসন্ত ঠিক করা
+  s = s.replace(/\u09CD\u09CD+/g, '\u09CD');
+
+  // ৪) রেফ: ব্যঞ্জন-ক্লাস্টারের আগে র্ বসানো
+  s = s.replace(new RegExp('(' + CL + ')' + REPH, 'g'), 'র\u09CD$1');
+
+  // ৫) ি ে ৈ কার — ক্লাস্টারের পরে বসানো
+  s = s.replace(new RegExp('([\u09BF\u09C7\u09C8])(' + CL + ')', 'g'), '$2$1');
+
+  // ৬) ো ও ৌ গঠন
+  s = s.replace(/\u09C7\u09BE/g, '\u09CB').replace(/\u09C7\u09D7/g, '\u09CC');
+
+  // ৭) চন্দ্রবিন্দু + কার → কার + চন্দ্রবিন্দু
+  s = s.replace(/\u0981([\u09BE\u09BF\u09C0\u09C1\u09C2\u09C3\u09CB\u09CC])/g, '$1\u0981');
+
+  // ৮) বিবিধ পরিষ্কার
+  s = s.replace(/অ\u09BE/g, 'আ')
+       .replace(/([০-৯])ঃ/g, '$1:')
+       .replace(/([ \]\[])ঃ/g, '$1:')
+       .replace(/\u09CD\u200C\u09CD\u200C/g, '\u09CD\u200C');
+  return s;
 }
+// ==CONVERTER-END==
 
-// Fixed and stable reordering pass
-function reArrange(strIn) {
-  let str = strIn;
-
-  // Pass 1: move Ra-Phala (র + hasant) leftwards over preceding conjunct clusters
-  for (let i = 0; i < str.length; i++) {
-    if (i < str.length - 1 && str[i] === 'র' && isBanglaHalant(str[i + 1]) && !isBanglaHalant(str[i - 1])) {
-      let j = 1;
-      while (true) {
-        if (i - j < 0) break;
-        if (isBanglaBanjonborno(str[i - j]) && isBanglaHalant(str[i - j - 1])) {
-          j += 2;
-        } else if (j === 1 && isBanglaKar(str[i - j])) {
-          j++;
-        } else {
-          break;
-        }
-      }
-      str = str.slice(0, i - j) + str[i] + str[i + 1] + str.slice(i - j, i) + str.slice(i + 2);
-      i += 1;
-    }
-  }
-
-  str = str.replace(/্্/g, '্');
-
-  // Pass 2: repha + vowel/kar reordering + nukta placement
-  for (let i = 0; i < str.length; i++) {
-    if (i < str.length - 1 && str[i] === 'র' && isBanglaHalant(str[i + 1]) && !isBanglaHalant(str[i - 1]) && isBanglaHalant(str[i + 2])) {
-      let j = 1;
-      while (true) {
-        if (i - j < 0) break;
-        if (isBanglaBanjonborno(str[i - j]) && isBanglaHalant(str[i - j - 1])) {
-          j += 2;
-        } else if (j === 1 && isBanglaKar(str[i - j])) {
-          j++;
-        } else {
-          break;
-        }
-      }
-      str = str.slice(0, i - j) + str[i] + str[i + 1] + str.slice(i - j, i) + str.slice(i + 2);
-      i += 1;
-      continue;
-    }
-
-    if (i > 0 && str[i] === '্' && (isBanglaKar(str[i - 1]) || isBanglaNukta(str[i - 1])) && i < str.length - 1) {
-      str = str.slice(0, i - 1) + str[i] + str[i + 1] + str[i - 1] + str.slice(i + 2);
-    }
-
-    if (i > 0 && i < str.length - 1 && str[i] === '্' && str[i - 1] === 'র' && str[i - 2] !== '্' && isBanglaKar(str[i + 1])) {
-      str = str.slice(0, i - 1) + str[i + 1] + str[i - 1] + str[i] + str.slice(i + 2);
-    }
-
-    // Pre-kar (ি ৈ ে) -> move after the consonant cluster it belongs to
-    if (i < str.length && isBanglaPreKar(str[i])) {
-      let k = i;
-      let target = i + 1;
-      while (target < str.length && isBanglaBanjonborno(str[target])) {
-        if (target + 1 < str.length && isBanglaHalant(str[target + 1])) {
-          target += 2;
-        } else {
-          target += 1;
-          break;
-        }
-      }
-      if (target > i + 1) {
-        let kar = str[i];
-        let cluster = str.slice(i + 1, target);
-        let rest = str.slice(target);
-        
-        // Handle 'o-kar' (ে + consonant + া -> ো)
-        if (kar === 'e' || kar === 'ে') {
-          let lastChar = cluster[cluster.length - 1];
-          // Check if followed by 'া'
-          if (rest.startsWith('া')) {
-            str = str.slice(0, i) + cluster + 'ো' + rest.slice(1);
-            continue;
-          }
-        }
-        
-        str = str.slice(0, i) + cluster + kar + rest;
-      }
-    }
-
-    if (i < str.length - 1 && isBanglaNukta(str[i]) && isBanglaPostKar(str[i + 1])) {
-      str = str.slice(0, i) + str[i + 1] + str[i] + str.slice(i + 2);
-    }
-  }
-
-  return str;
-}
-
-function convertBijoyToUnicode(text) {
-  text = applyMap(text, preConversionMap);
-  text = applyMap(text, conversionMap);
-  text = reArrange(text);
-  text = applyMap(text, postConversionMap);
-  return text;
-}
-
-function setStatus(msg, ok) {
+function setStatus(msg, kind) {
   const el = document.getElementById('status');
   el.textContent = msg;
-  el.className = ok ? 'ok' : 'err';
+  el.className = kind || '';
 }
 
-Office.onReady((info) => {
-  if (info.host !== Office.HostType.Word) {
-    setStatus('এই অ্যাড-ইনটি শুধু MS Word-এর জন্য।', false);
-    document.getElementById('convertSelectionBtn').disabled = true;
-  }
-});
+let isWord = false;
+if (typeof Office !== 'undefined' && Office.onReady) {
+  Office.onReady((info) => {
+    isWord = info && info.host === Office.HostType.Word;
+    if (!isWord) {
+      setStatus('ডকুমেন্ট থেকে কনভার্ট শুধু MS Word-এ কাজ করবে। নিচের পেস্ট বক্স ব্রাউজারেও কাজ করে।', 'info');
+      document.getElementById('convertSelectionBtn').disabled = true;
+    }
+  });
+} else {
+  setStatus('ডকুমেন্ট থেকে কনভার্ট শুধু MS Word-এ কাজ করবে। নিচের পেস্ট বক্স ব্রাউজারেও কাজ করে।', 'info');
+  document.getElementById('convertSelectionBtn').disabled = true;
+}
 
 document.getElementById('quickConvertBtn').addEventListener('click', () => {
-  const input = document.getElementById('quickInput').value;
-  document.getElementById('quickOutput').value = convertBijoyToUnicode(input);
+  document.getElementById('quickOutput').value =
+    convertBijoyToUnicode(document.getElementById('quickInput').value);
 });
 
 document.getElementById('quickClearBtn').addEventListener('click', () => {
@@ -334,19 +181,16 @@ document.getElementById('quickClearBtn').addEventListener('click', () => {
   document.getElementById('quickOutput').value = '';
 });
 
-document.getElementById('copyBtn').addEventListener('click', () => {
+document.getElementById('copyBtn').addEventListener('click', async () => {
   const out = document.getElementById('quickOutput');
-  out.select();
-  document.execCommand('copy');
-  setStatus('কপি হয়েছে।', true);
+  try {
+    await navigator.clipboard.writeText(out.value);
+  } catch (e) {
+    out.select();
+    document.execCommand('copy');
+  }
+  setStatus('কপি হয়েছে।', 'ok');
 });
-
-function makeBengaliShapingSafe(text) {
-  return text
-    .replace(/ড়/g, 'ড়')
-    .replace(/ঢ়/g, 'ঢ়')
-    .replace(/য়/g, 'য়');
-}
 
 document.getElementById('convertSelectionBtn').addEventListener('click', () => {
   const fontName = document.getElementById('fontSelect').value;
@@ -357,37 +201,19 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
     await context.sync();
 
     if (!range.text || range.text.trim() === '') {
-      setStatus('আগে ডকুমেন্টে বাংলা (Bijoy) টেক্সট সিলেক্ট করুন।', false);
+      setStatus('আগে ডকুমেন্টে বাংলা (Bijoy) টেক্সট সিলেক্ট করুন।', 'err');
       return;
     }
 
-    const converted = makeBengaliShapingSafe(
-      convertBijoyToUnicode(range.text)
-    );
-
-    const insertedRange = range.insertText(
-      converted,
-      Word.InsertLocation.replace
-    );
-
+    const inserted = range.insertText(convertBijoyToUnicode(range.text), Word.InsertLocation.replace);
     if (fontName) {
-      insertedRange.font.name = fontName;
-      insertedRange.font.nameBidirectional = fontName;
-      insertedRange.languageId = Word.LanguageId.bengali;
-      insertedRange.languageIdOther = Word.LanguageId.bengali;
+      inserted.font.name = fontName;
+      try { inserted.font.nameBi = fontName; } catch (e) {}
     }
-
     await context.sync();
 
-    setStatus(
-      fontName
-        ? 'কনভার্ট সম্পন্ন হয়েছে। ফন্ট: ' + fontName
-        : 'কনভার্ট সম্পন্ন হয়েছে।',
-      true
-    );
-  }).catch((err) => {
-    setStatus('সমস্যা হয়েছে: ' + err.message, false);
-  });
+    setStatus('কনভার্ট সম্পন্ন হয়েছে।' + (fontName ? ' ফন্ট: ' + fontName : ''), 'ok');
+  }).catch((err) => setStatus('সমস্যা হয়েছে: ' + err.message, 'err'));
 });
 </script>
 </body>
