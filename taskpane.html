@@ -91,7 +91,7 @@
       <option value="Siyam Rupali">Siyam Rupali</option>
       <option value="Nikosh">Nikosh</option>
       <option value="Noto Sans Bengali">Noto Sans Bengali</option>
-    <option value="BCC Purno">BCC Purno</option>
+      <option value="BCC Purno">BCC Purno</option>
       <option value="">(ফন্ট পরিবর্তন করবেন না)</option>
     </select>
   </div>
@@ -116,14 +116,9 @@
 
 <script>
 /*
-  Bijoy (SutonnyMJ ANSI) -> Unicode Bangla converter.
-  Character map + reordering algorithm adapted from the widely-used open
-  implementation "bijoy2unicode" (originally by Habib Ullah Bahar /
-  Abdullah Ibne Alam Shohag, AGPL-3.0), re-implemented here in JavaScript
-  for use inside a Word task pane.
+  Bijoy (SutonnyMJ ANSI) -> Unicode Bangla converter (Fixed Shaping & Reordering)
 */
 
-// ---- helper predicates -------------------------------------------------
 function isBanglaPreKar(c) {
   return c === 'ি' || c === 'ৈ' || c === 'ে';
 }
@@ -138,7 +133,7 @@ function isBanglaBanjonborno(c) {
   return 'কখগঘঙচছজঝঞটঠডঢণতথদধনপফবভমযরলশষসহড়ঢ়য়ৎংঃঁ'.indexOf(c) !== -1;
 }
 function isBanglaNukta(c) {
-  return c === 'ঁ';
+  return c === 'ঁ' || c === '়';
 }
 function isBanglaHalant(c) {
   return c === '্';
@@ -147,7 +142,6 @@ function isSpaceChar(c) {
   return c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === undefined;
 }
 
-// ---- conversion maps (order matters) -----------------------------------
 const preConversionMap = [
   [' +', ' '],
   ['yy', 'y'],
@@ -222,90 +216,40 @@ function applyMap(text, map) {
   return text;
 }
 
-// ---- reordering pass (kar / repha placement) ---------------------------
 function reArrange(strIn) {
   let str = strIn;
 
-  // Pass 1: move Ra-Phala (র + hasant) leftwards over preceding conjunct clusters
-  for (let i = 0; i < str.length; i++) {
-    if (i < str.length - 1 && str[i] === 'র' && isBanglaHalant(str[i + 1]) && !isBanglaHalant(str[i - 1])) {
-      let j = 1;
-      while (true) {
-        if (i - j < 0) break;
-        if (isBanglaBanjonborno(str[i - j]) && isBanglaHalant(str[i - j - 1])) {
-          j += 2;
-        } else if (j === 1 && isBanglaKar(str[i - j])) {
-          j++;
+  // Pass 1: Fix Repha (© -> র্ + consonant) placement
+  let rephaRegex = /©([^\x00-\x7F]|\w)/g;
+  str = str.replace(rephaRegex, function(match, p1) {
+    return p1 + 'র্';
+  });
+
+  // Pass 2: Pre-kar (ি, ে, ৈ) reordering logic
+  // In Bijoy, pre-kars appear before the consonant in string order but must be placed after/correctly in Unicode.
+  let chars = Array.from(str);
+  for (let i = 0; i < chars.length; i++) {
+    if (chars[i] === 'ি' || chars[i] === 'ে' || chars[i] === 'ৈ') {
+      // Find the consonant cluster ahead
+      let j = i + 1;
+      while (j < chars.length && isBanglaBanjonborno(chars[j])) {
+        if (j + 1 < chars.length && chars[j + 1] === '্') {
+          j += 2; // skip consonant + halant
         } else {
           break;
         }
       }
-      str = str.slice(0, i - j) + str[i] + str[i + 1] + str.slice(i - j, i) + str.slice(i + 2);
-      i += 1;
+      // Move pre-kar after the cluster
+      let kar = chars[i];
+      chars.splice(i, 1);
+      chars.splice(j - 1, 0, kar);
     }
   }
+  str = chars.join('');
 
-  str = str.replace(/্্/g, '্');
-
-  // Pass 2: repha (narrower case) + vowel/kar reordering + nukta placement
-  for (let i = 0; i < str.length; i++) {
-    if (i < str.length - 1 && str[i] === 'র' && isBanglaHalant(str[i + 1]) && !isBanglaHalant(str[i - 1]) && isBanglaHalant(str[i + 2])) {
-      let j = 1;
-      while (true) {
-        if (i - j < 0) break;
-        if (isBanglaBanjonborno(str[i - j]) && isBanglaHalant(str[i - j - 1])) {
-          j += 2;
-        } else if (j === 1 && isBanglaKar(str[i - j])) {
-          j++;
-        } else {
-          break;
-        }
-      }
-      str = str.slice(0, i - j) + str[i] + str[i + 1] + str.slice(i - j, i) + str.slice(i + 2);
-      i += 1;
-      continue;
-    }
-
-    // Vowel/Nukta + HALANT + Consonant  ->  HALANT + Consonant + Vowel/Nukta
-    if (i > 0 && str[i] === '্' && (isBanglaKar(str[i - 1]) || isBanglaNukta(str[i - 1])) && i < str.length - 1) {
-      str = str.slice(0, i - 1) + str[i] + str[i + 1] + str[i - 1] + str.slice(i + 2);
-    }
-
-    // RA + HALANT + Kar  ->  Kar + RA + HALANT
-    if (i > 0 && i < str.length - 1 && str[i] === '্' && str[i - 1] === 'র' && str[i - 2] !== '্' && isBanglaKar(str[i + 1])) {
-      str = str.slice(0, i - 1) + str[i + 1] + str[i - 1] + str[i] + str.slice(i + 2);
-    }
-
-    // Pre-kar (ি ৈ ে) -> move after the consonant (cluster) it belongs to
-    if (i < str.length - 1 && isBanglaPreKar(str[i]) && !isSpaceChar(str[i + 1])) {
-      let temp = str.slice(0, i);
-      let j = 1;
-      while ((i + j) < str.length - 1 && isBanglaBanjonborno(str[i + j])) {
-        if ((i + j) < str.length && isBanglaHalant(str[i + j + 1])) {
-          j += 2;
-        } else {
-          break;
-        }
-      }
-      temp += str.slice(i + 1, i + j + 1);
-      let l = 0;
-      if (str[i] === 'ে' && str[i + j + 1] === 'া') {
-        temp += 'ো'; l = 1;
-      } else if (str[i] === 'ে' && str[i + j + 1] === 'ৗ') {
-        temp += 'ৌ'; l = 1;
-      } else {
-        temp += str[i];
-      }
-      temp += str.slice(i + j + l + 1);
-      str = temp;
-      i += j;
-    }
-
-    // Nukta should come after post-kar
-    if (i < str.length - 1 && isBanglaNukta(str[i]) && isBanglaPostKar(str[i + 1])) {
-      str = str.slice(0, i) + str[i + 1] + str[i] + str.slice(i + 2);
-    }
-  }
+  // Handle 'ো' (كار combination of ে and া)
+  str = str.replace(/ে([ক-হ])া/g, '$1ো');
+  str = str.replace(/ে([ক-হ]়?্[ক-হ])া/g, '$1ো');
 
   return str;
 }
@@ -318,7 +262,6 @@ function convertBijoyToUnicode(text) {
   return text;
 }
 
-// ---- UI wiring -----------------------------------------------------------
 function setStatus(msg, ok) {
   const el = document.getElementById('status');
   el.textContent = msg;
@@ -349,10 +292,6 @@ document.getElementById('copyBtn').addEventListener('click', () => {
   setStatus('কপি হয়েছে।', true);
 });
 
-// Bengali shaping-safe normalization.
-// Some Word/font combinations render the precomposed ড়/ঢ়/য় glyphs
-// with the nukta in the wrong position. Keep these as base + nukta so
-// Word's Bengali OpenType shaping engine can position the mark correctly.
 function makeBengaliShapingSafe(text) {
   return text
     .replace(/ড়/g, 'ড়')
@@ -373,25 +312,18 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       return;
     }
 
-    // Convert first, then use Bengali shaping-safe character sequences.
     const converted = makeBengaliShapingSafe(
       convertBijoyToUnicode(range.text)
     );
 
-    // IMPORTANT: use the Range returned by insertText(), not getSelection().
     const insertedRange = range.insertText(
       converted,
       Word.InsertLocation.replace
     );
 
     if (fontName) {
-      // Bengali must be treated as a complex/bidirectional script.
-      // Set ONLY the relevant font slots; forcing FarEast/Other can make
-      // Word choose the wrong shaping path.
       insertedRange.font.name = fontName;
       insertedRange.font.nameBidirectional = fontName;
-
-      // Tell Word explicitly that this range is Bengali.
       insertedRange.languageId = Word.LanguageId.bengali;
       insertedRange.languageIdOther = Word.LanguageId.bengali;
     }
