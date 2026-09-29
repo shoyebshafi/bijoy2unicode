@@ -91,7 +91,7 @@
       <option value="Siyam Rupali">Siyam Rupali</option>
       <option value="Nikosh">Nikosh</option>
       <option value="Noto Sans Bengali">Noto Sans Bengali</option>
-      <option value="BCC Purno">BCC Purno</option>
+    <option value="BCC Purno">BCC Purno</option>
       <option value="">(ফন্ট পরিবর্তন করবেন না)</option>
     </select>
   </div>
@@ -349,8 +349,20 @@ document.getElementById('copyBtn').addEventListener('click', () => {
   setStatus('কপি হয়েছে।', true);
 });
 
+// Bengali shaping-safe normalization.
+// Some Word/font combinations render the precomposed ড়/ঢ়/য় glyphs
+// with the nukta in the wrong position. Keep these as base + nukta so
+// Word's Bengali OpenType shaping engine can position the mark correctly.
+function makeBengaliShapingSafe(text) {
+  return text
+    .replace(/ড়/g, 'ড়')
+    .replace(/ঢ়/g, 'ঢ়')
+    .replace(/য়/g, 'য়');
+}
+
 document.getElementById('convertSelectionBtn').addEventListener('click', () => {
   const fontName = document.getElementById('fontSelect').value;
+
   Word.run(async (context) => {
     const range = context.document.getSelection();
     range.load('text');
@@ -361,23 +373,27 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       return;
     }
 
-    // Convert first, then normalize Bengali Unicode to NFC.
-    // This is important for characters such as ড়/ঢ়/য়: NFC composes
-    // their base-letter + nukta sequence into the proper Unicode codepoint,
-    // preventing Word/font fallback from placing the nukta (dot) incorrectly.
-    const converted = convertBijoyToUnicode(range.text).normalize('NFC');
+    // Convert first, then use Bengali shaping-safe character sequences.
+    const converted = makeBengaliShapingSafe(
+      convertBijoyToUnicode(range.text)
+    );
 
-    // Keep the exact inserted range; do not re-select the document.
+    // IMPORTANT: use the Range returned by insertText(), not getSelection().
     const insertedRange = range.insertText(
       converted,
       Word.InsertLocation.replace
     );
 
     if (fontName) {
-      // Apply only through the Word Font API. Avoid injecting custom OOXML,
-      // which can interfere with Bengali shaping and existing document layout.
+      // Bengali must be treated as a complex/bidirectional script.
+      // Set ONLY the relevant font slots; forcing FarEast/Other can make
+      // Word choose the wrong shaping path.
       insertedRange.font.name = fontName;
       insertedRange.font.nameBidirectional = fontName;
+
+      // Tell Word explicitly that this range is Bengali.
+      insertedRange.languageId = Word.LanguageId.bengali;
+      insertedRange.languageIdOther = Word.LanguageId.bengali;
     }
 
     await context.sync();
