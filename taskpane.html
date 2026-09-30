@@ -29,7 +29,7 @@
 <body>
 
   <h1>Bijoy → Unicode কনভার্টার</h1>
-  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v13</b></p>
+  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v14</b></p>
 
   <div class="card">
     <label for="fontSelect">রূপান্তরের পর যে ইউনিকোড ফন্ট বসবে</label>
@@ -215,36 +215,72 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
   const onlyBijoy = document.getElementById('onlyBijoy').checked;
   const btn = document.getElementById('convertSelectionBtn');
   btn.disabled = true;
+  setStatus('চলছে…', 'info');
+  const norm = (t) => t.replace(/\s+/g, ' ').trim();
 
   Word.run(async (context) => {
-    const words = context.document.getSelection().getTextRanges([' '], true);
-    words.load('items/text,items/font/name');
+    const sel = context.document.getSelection();
+    const paras = sel.paragraphs;
+    paras.load('items');
     await context.sync();
 
-    const targets = [];
-    let skipped = 0, mixed = 0;
-    const skipFonts = {}, mixedSamples = [];
-    for (const w of words.items) {
-      if (!w.text || !w.text.trim()) continue;
-      const fn = w.font.name || '';
-      if (onlyBijoy) {
-        if (fn === '') { mixed++; if (mixedSamples.length < 6) mixedSamples.push(w.text); continue; } // একই শব্দে একাধিক ফন্ট
-        if (!isBijoyFont(fn)) { skipped++; skipFonts[fn] = (skipFonts[fn] || 0) + 1; continue; }      // ইংরেজি/অন্য ফন্ট
-      }
-      const conv = convertBijoyToUnicode(w.text);
-      if (conv !== w.text) targets.push([w, conv, fn]);
-    }
+    // প্রতিটি অনুচ্ছেদের (সিলেকশনের ভেতরের অংশের) শব্দ ও ফন্ট
+    const cols = paras.items.map((p) => {
+      const c = p.getRange('Whole').intersectWith(sel).getTextRanges([' '], true);
+      c.load('items/text,items/font/name');
+      return c;
+    });
+    await context.sync();
 
-    if (!targets.length) {
+    // পাশাপাশি থাকা Bijoy শব্দ = একটি টুকরো (অনুচ্ছেদ পেরোবে না)
+    let skipped = 0, mixed = 0;
+    const skipFonts = {}, mixedSamples = [], segs = [];
+    for (const col of cols) {
+      let cur = null;
+      for (const w of col.items) {
+        if (!w.text || !w.text.trim()) continue;
+        const fn = w.font.name || '';
+        if (onlyBijoy) {
+          if (fn === '') { mixed++; if (mixedSamples.length < 6) mixedSamples.push(w.text); cur = null; continue; }
+          if (!isBijoyFont(fn)) { skipped++; skipFonts[fn] = (skipFonts[fn] || 0) + 1; cur = null; continue; }
+        }
+        if (!cur) { cur = { words: [], fn }; segs.push(cur); }
+        cur.words.push(w);
+      }
+    }
+    if (!segs.length) {
       setStatus('কনভার্ট করার মতো Bijoy টেক্সট পাওয়া যায়নি। আগে ডকুমেন্টে লেখা সিলেক্ট করুন।', 'err');
       return;
     }
 
-    // কোন ফন্ট-স্লট এই Word-এ চলে, একটিমাত্র শব্দে দ্রুত যাচাই
-    let slots = [];
+    segs.forEach((g) => {
+      g.range = g.words.length > 1 ? g.words[0].expandTo(g.words[g.words.length - 1]) : g.words[0];
+      g.range.load('text');
+    });
+    await context.sync();
+
+    // টুকরোর টেক্সট শব্দগুলোর সাথে না মিললে (মাঝে অন্য কিছু আছে) নিরাপদে শব্দ ধরে ধরে
+    const jobs = [];
+    for (const g of segs) {
+      const single = g.words.length === 1;
+      if (single || norm(g.range.text) === norm(g.words.map((w) => w.text).join(' '))) {
+        jobs.push({ range: g.range, orig: single ? g.words[0].text : g.range.text, fn: g.fn, n: g.words.length });
+      } else {
+        g.words.forEach((w) => jobs.push({ range: w, orig: w.text, fn: g.fn, n: 1 }));
+      }
+    }
+    jobs.forEach((j) => { j.conv = convertBijoyToUnicode(j.orig); });
+    const targets = jobs.filter((j) => j.conv !== j.orig);
+    if (!targets.length) {
+      setStatus('কনভার্ট করার মতো Bijoy টেক্সট পাওয়া যায়নি।', 'err');
+      return;
+    }
+
+    // কোন ফন্ট-স্লট এই Word-এ চলে, একটিমাত্র টুকরোয় দ্রুত যাচাই
+    const slots = [];
     if (fontName) {
       for (const p of ['nameBidirectional', 'nameBi', 'nameAscii', 'nameOther', 'nameFarEast']) {
-        try { targets[0][0].font[p] = fontName; await context.sync(); slots.push(p); } catch (e) { /* নেই */ }
+        try { targets[0].range.font[p] = fontName; await context.sync(); slots.push(p); } catch (e) { /* নেই */ }
       }
     }
     const applyFont = (r) => {
@@ -252,20 +288,20 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       slots.forEach((p) => { r.font[p] = fontName; });
     };
 
-    // পুরোটা একবারে (শেষ শব্দ থেকে শুরুর দিকে): বদলানো + ফন্ট + ফলাফল পড়া, একটি সিঙ্কে
+    // সবকটি টুকরো একবারে (শেষ থেকে শুরুর দিকে): বদলানো + ফন্ট + ফলাফল পড়া
     targets.reverse();
-    const rs = targets.map(([w, conv]) => {
-      const r = w.insertText(conv, Word.InsertLocation.replace);
+    const rs = targets.map((j) => {
+      const r = j.range.insertText(j.conv, Word.InsertLocation.replace);
       if (fontName) applyFont(r);
       r.load('text');
       return r;
     });
     await context.sync();
 
-    // একবার যাচাই (কোনো সিঙ্ক ছাড়া, মেমরিতে)
-    let bad = [];
+    // একবার যাচাই (মেমরিতে)
+    const bad = [];
     for (let i = 0; i < targets.length; i++) {
-      if (rs[i].text.trim() !== targets[i][1].trim()) bad.push(i);
+      if (norm(rs[i].text) !== norm(targets[i].conv)) bad.push(i);
     }
     let converted = targets.length - bad.length, healed = 0;
     const failed = [];
@@ -273,7 +309,7 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
     // যেগুলো বদলায়নি শুধু সেগুলো আরেকবার, একটি সিঙ্কে
     if (bad.length) {
       const rs2 = bad.map((i) => {
-        const r = targets[i][0].insertText(targets[i][1], Word.InsertLocation.replace);
+        const r = targets[i].range.insertText(targets[i].conv, Word.InsertLocation.replace);
         if (fontName) applyFont(r);
         r.load('text');
         return r;
@@ -281,20 +317,21 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       try { await context.sync(); } catch (e) { /* নিচে ব্যর্থ ধরা হবে */ }
       bad.forEach((i, k) => {
         let ok = false;
-        try { ok = rs2[k].text.trim() === targets[i][1].trim(); } catch (e) {}
+        try { ok = norm(rs2[k].text) === norm(targets[i].conv); } catch (e) {}
         if (ok) { healed++; converted++; } else { failed.push(i); }
       });
-      if (failed.length) { // ব্যর্থ শব্দের আগের ফন্ট ফেরত
-        failed.forEach((i) => { if (targets[i][2]) targets[i][0].font.name = targets[i][2]; });
+      if (failed.length) { // ব্যর্থ অংশের আগের ফন্ট ফেরত
+        failed.forEach((i) => { if (targets[i].fn) targets[i].range.font.name = targets[i].fn; });
         try { await context.sync(); } catch (e) {}
       }
     }
 
-    setStatus(converted + 'টি শব্দ কনভার্ট হয়েছে।' +
+    const wordCount = targets.reduce((a, j) => a + j.n, 0);
+    setStatus(converted + 'টি অংশ (মোট প্রায় ' + wordCount + 'টি শব্দ) কনভার্ট হয়েছে।' +
       (healed ? ' (' + healed + 'টি দ্বিতীয়বার চেষ্টায়)' : '') +
       (skipped ? ' বাদ (অন্য ফন্ট): ' + Object.entries(skipFonts).map(([f, c]) => f + ' ×' + c).join(', ') + '।' : '') +
       (mixed ? ' মিশ্র ফন্টের ' + mixed + 'টি শব্দ বাদ গেছে: ' + mixedSamples.join(' , ') + '।' : '') +
-      (failed.length ? ' ⚠ ' + failed.length + 'টি শব্দ বদলানো যায়নি: ' + failed.slice(0, 8).map((i) => targets[i][0].text).join(' , ') : ''),
+      (failed.length ? ' ⚠ ' + failed.length + 'টি অংশ বদলানো যায়নি: ' + failed.slice(0, 5).map((i) => targets[i].orig.slice(0, 30)).join(' | ') : ''),
       failed.length ? 'err' : 'ok');
   }).catch((err) => setStatus('সমস্যা হয়েছে: ' + err.message, 'err'))
     .finally(() => { btn.disabled = false; });
