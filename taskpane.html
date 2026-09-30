@@ -29,7 +29,7 @@
 <body>
 
   <h1>Bijoy → Unicode কনভার্টার</h1>
-  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v12</b></p>
+  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v13</b></p>
 
   <div class="card">
     <label for="fontSelect">রূপান্তরের পর যে ইউনিকোড ফন্ট বসবে</label>
@@ -139,7 +139,8 @@ function convertBijoyToUnicode(input) {
   s = s.replace(/\u09CD\u09CD+/g, '\u09CD');
 
   // ৪) রেফ: ব্যঞ্জন-ক্লাস্টারের আগে র্ বসানো
-  s = s.replace(new RegExp('(' + CL + ')' + REPH, 'g'), 'র\u09CD$1');
+  // ব্যঞ্জন ও রেফের মাঝে া ী ু ূ ৃ ৗ কার থাকতে পারে (যেমন কর্তৃক = KZ…©K)
+  s = s.replace(new RegExp('(' + CL + ')([\u09BE\u09C0-\u09C3\u09D7]*)' + REPH, 'g'), 'র\u09CD$1$2');
 
   // ৫) ি ে ৈ কার — ক্লাস্টারের পরে বসানো
   s = s.replace(new RegExp('([\u09BF\u09C7\u09C8])(' + CL + ')', 'g'), '$2$1');
