@@ -29,7 +29,7 @@
 <body>
 
   <h1>Bijoy → Unicode কনভার্টার</h1>
-  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v15</b></p>
+  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v16</b></p>
 
   <div class="card">
     <label for="fontSelect">রূপান্তরের পর যে ইউনিকোড ফন্ট বসবে</label>
@@ -216,6 +216,30 @@ const LATIN_OR_GLYPH = /[A-Za-z‡†›¨©ÿ¯ª«š˜™¤¥§œ¶]/;
 const norm = (t) => t.replace(/\s+/g, ' ').trim();
 let slotsCache = null;
 
+// মিশ্র ফন্টের শব্দ ([GLv‡b, e¨vmva©] ইত্যাদি): কিনারার চিহ্ন ছেঁটে ভেতরের অংশ আলাদা করে খোঁজা
+const EDGE = /^[\[\](){}<>,.;:!?"'=+\/*%#@\-]+|[\[\](){}<>,.;:!?"'=+\/*%#@\-]+$/g;
+function queueMixed(list) {
+  const items = [];
+  for (const w of list) {
+    const core = w.text.replace(EDGE, '');
+    if (!core || core === w.text) continue;
+    const m = w.search(core.replace(/\^/g, '^^'), { matchCase: true });
+    m.load('items/text,items/font/name');
+    items.push({ w, core, m });
+  }
+  return items;
+}
+function finishMixed(items) {
+  const map = new Map();
+  for (const it of items) {
+    const r = it.m.items.find((x) => x.text === it.core && isBijoyFont(x.font.name || ''));
+    if (!r) continue;
+    const conv = convertBijoyToUnicode(it.core);
+    if (conv !== it.core) map.set(it.w, { range: r, orig: it.core, conv, fn: r.font.name, n: 1 });
+  }
+  return map;
+}
+
 // টুকরোগুলো একবারে বদলানো + ফন্ট + একবার যাচাই + শুধু ব্যর্থগুলোর জন্য একটি পুনরায় চেষ্টা
 async function applyJobs(context, targets, fontName) {
   const res = { converted: 0, healed: 0, failed: [], words: 0 };
@@ -295,17 +319,17 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
     await context.sync();
 
     let skipped = 0, mixed = 0;
-    const skipFonts = {}, mixedSamples = [], segs = [];
+    const skipFonts = {}, mixedSamples = [], segs = [], order = [], mixedList = [];
     for (const col of cols) {
       let cur = null;
       for (const w of col.items) {
         if (!w.text || !w.text.trim()) continue;
         const fn = w.font.name || '';
         if (onlyBijoy) {
-          if (fn === '') { mixed++; if (mixedSamples.length < 6) mixedSamples.push(w.text); cur = null; continue; }
+          if (fn === '') { mixed++; mixedList.push(w); order.push({ mixedWord: w }); if (mixedSamples.length < 6) mixedSamples.push(w.text); cur = null; continue; }
           if (!isBijoyFont(fn)) { skipped++; skipFonts[fn] = (skipFonts[fn] || 0) + 1; cur = null; continue; }
         }
-        if (!cur) { cur = { words: [], fn }; segs.push(cur); }
+        if (!cur) { cur = { words: [], fn }; segs.push(cur); order.push({ seg: cur }); }
         cur.words.push(w);
       }
     }
@@ -314,10 +338,18 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       g.range = g.words.length > 1 ? g.words[0].expandTo(g.words[g.words.length - 1]) : g.words[0];
       g.range.load('text');
     });
+    const mixedItems = queueMixed(mixedList);
     await context.sync();
+    const mixedMap = finishMixed(mixedItems);
 
+    // কাজের তালিকা ডকুমেন্টের ক্রমে (টুকরো ও মিশ্র-শব্দের অংশ একসাথে)
     const jobs = [];
-    for (const g of segs) {
+    for (const o of order) {
+      if (o.mixedWord) {
+        if (mixedMap.has(o.mixedWord)) jobs.push(mixedMap.get(o.mixedWord));
+        continue;
+      }
+      const g = o.seg;
       const single = g.words.length === 1;
       if (single || norm(g.range.text) === norm(g.words.map((w) => w.text).join(' '))) {
         jobs.push({ range: g.range, orig: single ? g.words[0].text : g.range.text, fn: g.fn, n: g.words.length });
@@ -325,7 +357,7 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
         g.words.forEach((w) => jobs.push({ range: w, orig: w.text, fn: g.fn, n: 1 }));
       }
     }
-    jobs.forEach((j) => { j.conv = convertBijoyToUnicode(j.orig); });
+    jobs.forEach((j) => { if (j.conv === undefined) j.conv = convertBijoyToUnicode(j.orig); });
     const r1 = await applyJobs(context, jobs.filter((j) => j.conv !== j.orig), fontName);
 
     // যাচাই: কোনো অনুচ্ছেদে এখনো Bijoy-চিহ্ন (‡ † ¨ © ইত্যাদি) আছে কিনা
@@ -344,16 +376,19 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       const ws = sel.getTextRanges([' '], true);
       ws.load('items/text,items/font/name');
       await context.sync();
-      const t2 = [];
+      const t2 = [], mixed2 = [];
       for (const w of ws.items) {
         if (!w.text || !w.text.trim()) continue;
         const fn = w.font.name || '';
+        if (fn === '') { mixed2.push(w); continue; }
         const bijoyFont = fn !== '' && isBijoyFont(fn);
         const marker = !!fontName && fn === fontName && !hasBengali.test(w.text) && LATIN_OR_GLYPH.test(w.text);
         if (!bijoyFont && !marker) continue;
         const conv = convertBijoyToUnicode(w.text);
         if (conv !== w.text) t2.push({ range: w, orig: w.text, conv, fn: bijoyFont ? fn : '', n: 1 });
       }
+      const mi2 = queueMixed(mixed2);
+      if (mi2.length) { await context.sync(); finishMixed(mi2).forEach((j) => t2.push(j)); }
       r2 = await applyJobs(context, t2, fontName);
       left = await leftoverParas();
     }
@@ -368,7 +403,7 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       (r2 && r2.converted ? ' বাদ পড়া ' + r2.converted + 'টি শব্দ দ্বিতীয় ধাপে ঠিক হয়েছে।' : '') +
       (r1.healed ? ' (' + r1.healed + 'টি দ্বিতীয়বার চেষ্টায়)' : '') +
       (skipped ? ' বাদ (অন্য ফন্ট): ' + Object.entries(skipFonts).map(([f, c]) => f + ' ×' + c).join(', ') + '।' : '') +
-      (mixed ? ' মিশ্র ফন্টের ' + mixed + 'টি শব্দ বাদ গেছে: ' + mixedSamples.join(' , ') + '।' : '') +
+      (mixed - mixedMap.size > 0 ? ' মিশ্র ফন্টের ' + (mixed - mixedMap.size) + 'টি শব্দ পুরোপুরি ধরা যায়নি, যেমন: ' + mixedSamples.join(' , ') + '।' : '') +
       (failed.length ? ' ⚠ বদলানো যায়নি: ' + failed.slice(0, 5).join(' | ') : '') +
       (left.length ? ' ⚠ এখনো ' + left.length + 'টি অনুচ্ছেদে Bijoy অক্ষর আছে: ' + leftTokens.join(' , ') : ''),
       (failed.length || left.length) ? 'err' : 'ok');
