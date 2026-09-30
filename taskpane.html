@@ -29,7 +29,7 @@
 <body>
 
   <h1>Bijoy → Unicode কনভার্টার</h1>
-  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v14</b></p>
+  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v15</b></p>
 
   <div class="card">
     <label for="fontSelect">রূপান্তরের পর যে ইউনিকোড ফন্ট বসবে</label>
@@ -210,21 +210,83 @@ function isBijoyFont(name) {
   return extra.includes(n);
 }
 
+const hasBengali = /[\u0980-\u09FF]/;
+const GLYPH = /[‡†›¨©ÿ¯ª«š˜™¤¥§œ¶]/;                 // শুধু Bijoy-তে আসে, ইংরেজিতে নয়
+const LATIN_OR_GLYPH = /[A-Za-z‡†›¨©ÿ¯ª«š˜™¤¥§œ¶]/;
+const norm = (t) => t.replace(/\s+/g, ' ').trim();
+let slotsCache = null;
+
+// টুকরোগুলো একবারে বদলানো + ফন্ট + একবার যাচাই + শুধু ব্যর্থগুলোর জন্য একটি পুনরায় চেষ্টা
+async function applyJobs(context, targets, fontName) {
+  const res = { converted: 0, healed: 0, failed: [], words: 0 };
+  if (!targets.length) return res;
+
+  if (fontName && slotsCache === null) {
+    slotsCache = [];
+    for (const p of ['nameBidirectional', 'nameBi', 'nameAscii', 'nameOther', 'nameFarEast']) {
+      try { targets[0].range.font[p] = fontName; await context.sync(); slotsCache.push(p); } catch (e) { /* নেই */ }
+    }
+  }
+  const applyFont = (r) => {
+    r.font.name = fontName;
+    (slotsCache || []).forEach((p) => { r.font[p] = fontName; });
+  };
+
+  targets.reverse(); // শেষ থেকে শুরুর দিকে
+  const rs = targets.map((j) => {
+    const r = j.range.insertText(j.conv, Word.InsertLocation.replace);
+    if (fontName) applyFont(r);
+    r.load('text');
+    return r;
+  });
+  await context.sync();
+
+  const bad = [];
+  for (let i = 0; i < targets.length; i++) {
+    if (norm(rs[i].text) !== norm(targets[i].conv)) bad.push(i);
+  }
+  res.converted = targets.length - bad.length;
+  res.words = targets.reduce((a, j) => a + j.n, 0);
+
+  if (bad.length) {
+    const rs2 = bad.map((i) => {
+      const r = targets[i].range.insertText(targets[i].conv, Word.InsertLocation.replace);
+      if (fontName) applyFont(r);
+      r.load('text');
+      return r;
+    });
+    try { await context.sync(); } catch (e) { /* নিচে ব্যর্থ ধরা হবে */ }
+    const failedIdx = [];
+    bad.forEach((i, k) => {
+      let ok = false;
+      try { ok = norm(rs2[k].text) === norm(targets[i].conv); } catch (e) {}
+      if (ok) { res.healed++; res.converted++; } else { failedIdx.push(i); }
+    });
+    if (failedIdx.length) {
+      failedIdx.forEach((i) => { if (targets[i].fn) targets[i].range.font.name = targets[i].fn; });
+      try { await context.sync(); } catch (e) {}
+      res.failed = failedIdx.map((i) => targets[i].orig.slice(0, 30));
+    }
+  }
+  return res;
+}
+
 document.getElementById('convertSelectionBtn').addEventListener('click', () => {
   const fontName = document.getElementById('fontSelect').value;
   const onlyBijoy = document.getElementById('onlyBijoy').checked;
   const btn = document.getElementById('convertSelectionBtn');
   btn.disabled = true;
   setStatus('চলছে…', 'info');
-  const norm = (t) => t.replace(/\s+/g, ' ').trim();
 
   Word.run(async (context) => {
     const sel = context.document.getSelection();
+    context.trackedObjects.add(sel); // ধাপগুলোর মাঝে সিলেকশন সরে গেলেও ঠিক থাকবে
+
     const paras = sel.paragraphs;
     paras.load('items');
     await context.sync();
 
-    // প্রতিটি অনুচ্ছেদের (সিলেকশনের ভেতরের অংশের) শব্দ ও ফন্ট
+    // ধাপ ১: অনুচ্ছেদ ধরে, পাশাপাশি Bijoy শব্দ জুড়ে একটি টুকরো
     const cols = paras.items.map((p) => {
       const c = p.getRange('Whole').intersectWith(sel).getTextRanges([' '], true);
       c.load('items/text,items/font/name');
@@ -232,7 +294,6 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
     });
     await context.sync();
 
-    // পাশাপাশি থাকা Bijoy শব্দ = একটি টুকরো (অনুচ্ছেদ পেরোবে না)
     let skipped = 0, mixed = 0;
     const skipFonts = {}, mixedSamples = [], segs = [];
     for (const col of cols) {
@@ -248,10 +309,6 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
         cur.words.push(w);
       }
     }
-    if (!segs.length) {
-      setStatus('কনভার্ট করার মতো Bijoy টেক্সট পাওয়া যায়নি। আগে ডকুমেন্টে লেখা সিলেক্ট করুন।', 'err');
-      return;
-    }
 
     segs.forEach((g) => {
       g.range = g.words.length > 1 ? g.words[0].expandTo(g.words[g.words.length - 1]) : g.words[0];
@@ -259,7 +316,6 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
     });
     await context.sync();
 
-    // টুকরোর টেক্সট শব্দগুলোর সাথে না মিললে (মাঝে অন্য কিছু আছে) নিরাপদে শব্দ ধরে ধরে
     const jobs = [];
     for (const g of segs) {
       const single = g.words.length === 1;
@@ -270,69 +326,52 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       }
     }
     jobs.forEach((j) => { j.conv = convertBijoyToUnicode(j.orig); });
-    const targets = jobs.filter((j) => j.conv !== j.orig);
-    if (!targets.length) {
-      setStatus('কনভার্ট করার মতো Bijoy টেক্সট পাওয়া যায়নি।', 'err');
-      return;
-    }
+    const r1 = await applyJobs(context, jobs.filter((j) => j.conv !== j.orig), fontName);
 
-    // কোন ফন্ট-স্লট এই Word-এ চলে, একটিমাত্র টুকরোয় দ্রুত যাচাই
-    const slots = [];
-    if (fontName) {
-      for (const p of ['nameBidirectional', 'nameBi', 'nameAscii', 'nameOther', 'nameFarEast']) {
-        try { targets[0].range.font[p] = fontName; await context.sync(); slots.push(p); } catch (e) { /* নেই */ }
-      }
-    }
-    const applyFont = (r) => {
-      r.font.name = fontName;
-      slots.forEach((p) => { r.font[p] = fontName; });
+    // যাচাই: কোনো অনুচ্ছেদে এখনো Bijoy-চিহ্ন (‡ † ¨ © ইত্যাদি) আছে কিনা
+    const leftoverParas = async () => {
+      const ps = sel.paragraphs;
+      ps.load('items/text');
+      await context.sync();
+      return ps.items.map((p) => p.text).filter((t) => GLYPH.test(t));
     };
+    let left = await leftoverParas();
 
-    // সবকটি টুকরো একবারে (শেষ থেকে শুরুর দিকে): বদলানো + ফন্ট + ফলাফল পড়া
-    targets.reverse();
-    const rs = targets.map((j) => {
-      const r = j.range.insertText(j.conv, Word.InsertLocation.replace);
-      if (fontName) applyFont(r);
-      r.load('text');
-      return r;
-    });
-    await context.sync();
-
-    // একবার যাচাই (মেমরিতে)
-    const bad = [];
-    for (let i = 0; i < targets.length; i++) {
-      if (norm(rs[i].text) !== norm(targets[i].conv)) bad.push(i);
-    }
-    let converted = targets.length - bad.length, healed = 0;
-    const failed = [];
-
-    // যেগুলো বদলায়নি শুধু সেগুলো আরেকবার, একটি সিঙ্কে
-    if (bad.length) {
-      const rs2 = bad.map((i) => {
-        const r = targets[i].range.insertText(targets[i].conv, Word.InsertLocation.replace);
-        if (fontName) applyFont(r);
-        r.load('text');
-        return r;
-      });
-      try { await context.sync(); } catch (e) { /* নিচে ব্যর্থ ধরা হবে */ }
-      bad.forEach((i, k) => {
-        let ok = false;
-        try { ok = norm(rs2[k].text) === norm(targets[i].conv); } catch (e) {}
-        if (ok) { healed++; converted++; } else { failed.push(i); }
-      });
-      if (failed.length) { // ব্যর্থ অংশের আগের ফন্ট ফেরত
-        failed.forEach((i) => { if (targets[i].fn) targets[i].range.font.name = targets[i].fn; });
-        try { await context.sync(); } catch (e) {}
+    // ধাপ ২ (শুধু দরকার হলে): বাদ পড়া শব্দ ধরা — আলাদা পদ্ধতিতে শব্দ তালিকা, আর
+    // Bijoy ফন্ট অথবা আমাদের বসানো ফন্টে থাকা অবিবর্তিত ল্যাটিন/Bijoy অক্ষরের শব্দ
+    let r2 = null;
+    if (left.length) {
+      const ws = sel.getTextRanges([' '], true);
+      ws.load('items/text,items/font/name');
+      await context.sync();
+      const t2 = [];
+      for (const w of ws.items) {
+        if (!w.text || !w.text.trim()) continue;
+        const fn = w.font.name || '';
+        const bijoyFont = fn !== '' && isBijoyFont(fn);
+        const marker = !!fontName && fn === fontName && !hasBengali.test(w.text) && LATIN_OR_GLYPH.test(w.text);
+        if (!bijoyFont && !marker) continue;
+        const conv = convertBijoyToUnicode(w.text);
+        if (conv !== w.text) t2.push({ range: w, orig: w.text, conv, fn: bijoyFont ? fn : '', n: 1 });
       }
+      r2 = await applyJobs(context, t2, fontName);
+      left = await leftoverParas();
     }
 
-    const wordCount = targets.reduce((a, j) => a + j.n, 0);
-    setStatus(converted + 'টি অংশ (মোট প্রায় ' + wordCount + 'টি শব্দ) কনভার্ট হয়েছে।' +
-      (healed ? ' (' + healed + 'টি দ্বিতীয়বার চেষ্টায়)' : '') +
+    sel.untrack();
+
+    const failed = r1.failed.concat(r2 ? r2.failed : []);
+    const leftTokens = [];
+    left.forEach((t) => t.split(/\s+/).forEach((x) => { if (GLYPH.test(x) && leftTokens.length < 6) leftTokens.push(x); }));
+
+    setStatus(r1.converted + 'টি অংশ (প্রায় ' + r1.words + 'টি শব্দ) কনভার্ট হয়েছে।' +
+      (r2 && r2.converted ? ' বাদ পড়া ' + r2.converted + 'টি শব্দ দ্বিতীয় ধাপে ঠিক হয়েছে।' : '') +
+      (r1.healed ? ' (' + r1.healed + 'টি দ্বিতীয়বার চেষ্টায়)' : '') +
       (skipped ? ' বাদ (অন্য ফন্ট): ' + Object.entries(skipFonts).map(([f, c]) => f + ' ×' + c).join(', ') + '।' : '') +
       (mixed ? ' মিশ্র ফন্টের ' + mixed + 'টি শব্দ বাদ গেছে: ' + mixedSamples.join(' , ') + '।' : '') +
-      (failed.length ? ' ⚠ ' + failed.length + 'টি অংশ বদলানো যায়নি: ' + failed.slice(0, 5).map((i) => targets[i].orig.slice(0, 30)).join(' | ') : ''),
-      failed.length ? 'err' : 'ok');
+      (failed.length ? ' ⚠ বদলানো যায়নি: ' + failed.slice(0, 5).join(' | ') : '') +
+      (left.length ? ' ⚠ এখনো ' + left.length + 'টি অনুচ্ছেদে Bijoy অক্ষর আছে: ' + leftTokens.join(' , ') : ''),
+      (failed.length || left.length) ? 'err' : 'ok');
   }).catch((err) => setStatus('সমস্যা হয়েছে: ' + err.message, 'err'))
     .finally(() => { btn.disabled = false; });
 });
