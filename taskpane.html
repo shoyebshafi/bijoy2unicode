@@ -29,7 +29,7 @@
 <body>
 
   <h1>Bijoy → Unicode কনভার্টার</h1>
-  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v6</b></p>
+  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v11</b></p>
 
   <div class="card">
     <label for="fontSelect">রূপান্তরের পর যে ইউনিকোড ফন্ট বসবে</label>
@@ -49,6 +49,7 @@
       <input type="checkbox" id="onlyBijoy" checked style="margin-top:3px;">
       <span>শুধু Bijoy ফন্টের (SutonnyMJ ইত্যাদি) শব্দ কনভার্ট করুন; ইংরেজি/অন্য ফন্টের লেখা যেমন আছে তেমন থাকবে</span>
     </label>
+    <input id="extraFonts" placeholder="অতিরিক্ত Bijoy ফন্টের নাম (কমা দিয়ে), যেমন: SiyamRupali_ANSI" style="width:100%;margin-top:8px;padding:6px;border:1px solid #ccc;border-radius:6px;font-size:12px;font-family:inherit;">
     <button id="convertSelectionBtn">নির্বাচিত টেক্সট কনভার্ট করুন</button>
     <div id="status"></div>
   </div>
@@ -201,12 +202,18 @@ document.getElementById('copyBtn').addEventListener('click', async () => {
 });
 
 function isBijoyFont(name) {
-  return /MJ/.test(name) || /bijoy|sutonny/i.test(name);
+  const n = name.toLowerCase().replace(/\s+/g, '');
+  if (/MJ/.test(name) || /bijoy|sutonny|ansi|adorsho|adarsha/.test(n)) return true;
+  const extra = (document.getElementById('extraFonts').value || '')
+    .split(',').map((x) => x.trim().toLowerCase().replace(/\s+/g, '')).filter(Boolean);
+  return extra.includes(n);
 }
 
 document.getElementById('convertSelectionBtn').addEventListener('click', () => {
   const fontName = document.getElementById('fontSelect').value;
   const onlyBijoy = document.getElementById('onlyBijoy').checked;
+  const btn = document.getElementById('convertSelectionBtn');
+  btn.disabled = true;
 
   Word.run(async (context) => {
     const words = context.document.getSelection().getTextRanges([' '], true);
@@ -215,15 +222,16 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
 
     const targets = [];
     let skipped = 0, mixed = 0;
+    const skipFonts = {}, mixedSamples = [];
     for (const w of words.items) {
       if (!w.text || !w.text.trim()) continue;
       const fn = w.font.name || '';
       if (onlyBijoy) {
-        if (fn === '') { mixed++; continue; }          // একই শব্দে একাধিক ফন্ট
-        if (!isBijoyFont(fn)) { skipped++; continue; } // ইংরেজি/অন্য ফন্ট
+        if (fn === '') { mixed++; if (mixedSamples.length < 6) mixedSamples.push(w.text); continue; } // একই শব্দে একাধিক ফন্ট
+        if (!isBijoyFont(fn)) { skipped++; skipFonts[fn] = (skipFonts[fn] || 0) + 1; continue; }      // ইংরেজি/অন্য ফন্ট
       }
       const conv = convertBijoyToUnicode(w.text);
-      if (conv !== w.text) targets.push([w, conv]);
+      if (conv !== w.text) targets.push([w, conv, fn]);
     }
 
     if (!targets.length) {
@@ -231,22 +239,73 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       return;
     }
 
-    const inserted = targets.map(([w, conv]) => w.insertText(conv, Word.InsertLocation.replace));
-    if (fontName) {
-      inserted.forEach((r) => { r.font.name = fontName; });
+    // শেষ শব্দ থেকে শুরুর দিকে, মাঝারি ব্যাচে; বদলানো + ফন্ট + যাচাই এক সিঙ্কে
+    targets.reverse();
+    const CHUNK = 60;
+    const failed = [];
+    let converted = 0, healed = 0, slots = null;
+    const allSlots = ['nameBidirectional', 'nameBi', 'nameAscii', 'nameOther', 'nameFarEast'];
+    const applyFont = (r) => {
+      r.font.name = fontName;
+      (slots || []).forEach((p) => { r.font[p] = fontName; });
+    };
+
+    for (let s = 0; s < targets.length; s += CHUNK) {
+      setStatus('চলছে… ' + Math.min(s + CHUNK, targets.length) + ' / ' + targets.length, 'info');
+      const part = targets.slice(s, s + CHUNK);
+      const rs = part.map(([w, conv]) => {
+        const r = w.insertText(conv, Word.InsertLocation.replace);
+        if (fontName) applyFont(r);
+        r.load('text');
+        return r;
+      });
       await context.sync();
-      // বাংলা complex-script ফন্ট স্লটগুলোও সেট করা (Word সংস্করণ অনুযায়ী যেটা আছে)
-      const slots = ['nameBidirectional', 'nameBi', 'nameAscii', 'nameOther', 'nameFarEast'];
-      for (const p of slots) {
-        try { inserted.forEach((r) => { r.font[p] = fontName; }); await context.sync(); } catch (e) { /* এই Word-এ নেই */ }
+
+      // প্রথম ব্যাচে জেনে নেওয়া কোন ফন্ট-স্লট এই Word-এ চলে
+      if (fontName && slots === null) {
+        slots = [];
+        for (const p of allSlots) {
+          try { rs.forEach((r) => { r.font[p] = fontName; }); await context.sync(); slots.push(p); } catch (e) { /* নেই */ }
+        }
+      }
+
+      // যাচাই: যেগুলো বদলায়নি শুধু সেগুলো একা একা আবার চেষ্টা
+      for (let i = 0; i < part.length; i++) {
+        const [w, conv, fn] = part[i];
+        let r = rs[i];
+        let ok = r.text.trim() === conv.trim();
+        for (let attempt = 0; !ok && attempt < 2; attempt++) {
+          try {
+            if (attempt === 0) {
+              r = w.insertText(conv, Word.InsertLocation.replace);
+            } else {
+              w.clear();
+              r = w.insertText(conv, Word.InsertLocation.start);
+            }
+            if (fontName) applyFont(r);
+            r.load('text');
+            await context.sync();
+            ok = r.text.trim() === conv.trim();
+            if (ok) healed++;
+          } catch (e) { /* পরের চেষ্টা */ }
+        }
+        if (ok) {
+          converted++;
+        } else {
+          failed.push(w.text);
+          if (fn) { try { w.font.name = fn; await context.sync(); } catch (e) {} } // আগের ফন্ট ফেরত
+        }
       }
     }
-    await context.sync();
 
-    setStatus(targets.length + 'টি শব্দ কনভার্ট হয়েছে।' +
-      (skipped ? ' ইংরেজি/অন্য ফন্টের ' + skipped + 'টি শব্দ বাদ দেওয়া হয়েছে।' : '') +
-      (mixed ? ' মিশ্র ফন্টের ' + mixed + 'টি শব্দ বাদ গেছে।' : ''), 'ok');
-  }).catch((err) => setStatus('সমস্যা হয়েছে: ' + err.message, 'err'));
+    setStatus(converted + 'টি শব্দ কনভার্ট হয়েছে।' +
+      (healed ? ' (' + healed + 'টি দ্বিতীয়বার চেষ্টায়)' : '') +
+      (skipped ? ' বাদ (অন্য ফন্ট): ' + Object.entries(skipFonts).map(([f, c]) => f + ' ×' + c).join(', ') + '।' : '') +
+      (mixed ? ' মিশ্র ফন্টের ' + mixed + 'টি শব্দ বাদ গেছে: ' + mixedSamples.join(' , ') + '।' : '') +
+      (failed.length ? ' ⚠ ' + failed.length + 'টি শব্দ বদলানো যায়নি: ' + failed.slice(0, 8).join(' , ') : ''),
+      failed.length ? 'err' : 'ok');
+  }).catch((err) => setStatus('সমস্যা হয়েছে: ' + err.message, 'err'))
+    .finally(() => { btn.disabled = false; });
 });
 </script>
 </body>
