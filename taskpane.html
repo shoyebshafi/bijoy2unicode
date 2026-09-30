@@ -29,7 +29,7 @@
 <body>
 
   <h1>Bijoy → Unicode কনভার্টার</h1>
-  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v11</b></p>
+  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v12</b></p>
 
   <div class="card">
     <label for="fontSelect">রূপান্তরের পর যে ইউনিকোড ফন্ট বসবে</label>
@@ -239,62 +239,53 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       return;
     }
 
-    // শেষ শব্দ থেকে শুরুর দিকে, মাঝারি ব্যাচে; বদলানো + ফন্ট + যাচাই এক সিঙ্কে
-    targets.reverse();
-    const CHUNK = 60;
-    const failed = [];
-    let converted = 0, healed = 0, slots = null;
-    const allSlots = ['nameBidirectional', 'nameBi', 'nameAscii', 'nameOther', 'nameFarEast'];
+    // কোন ফন্ট-স্লট এই Word-এ চলে, একটিমাত্র শব্দে দ্রুত যাচাই
+    let slots = [];
+    if (fontName) {
+      for (const p of ['nameBidirectional', 'nameBi', 'nameAscii', 'nameOther', 'nameFarEast']) {
+        try { targets[0][0].font[p] = fontName; await context.sync(); slots.push(p); } catch (e) { /* নেই */ }
+      }
+    }
     const applyFont = (r) => {
       r.font.name = fontName;
-      (slots || []).forEach((p) => { r.font[p] = fontName; });
+      slots.forEach((p) => { r.font[p] = fontName; });
     };
 
-    for (let s = 0; s < targets.length; s += CHUNK) {
-      setStatus('চলছে… ' + Math.min(s + CHUNK, targets.length) + ' / ' + targets.length, 'info');
-      const part = targets.slice(s, s + CHUNK);
-      const rs = part.map(([w, conv]) => {
-        const r = w.insertText(conv, Word.InsertLocation.replace);
+    // পুরোটা একবারে (শেষ শব্দ থেকে শুরুর দিকে): বদলানো + ফন্ট + ফলাফল পড়া, একটি সিঙ্কে
+    targets.reverse();
+    const rs = targets.map(([w, conv]) => {
+      const r = w.insertText(conv, Word.InsertLocation.replace);
+      if (fontName) applyFont(r);
+      r.load('text');
+      return r;
+    });
+    await context.sync();
+
+    // একবার যাচাই (কোনো সিঙ্ক ছাড়া, মেমরিতে)
+    let bad = [];
+    for (let i = 0; i < targets.length; i++) {
+      if (rs[i].text.trim() !== targets[i][1].trim()) bad.push(i);
+    }
+    let converted = targets.length - bad.length, healed = 0;
+    const failed = [];
+
+    // যেগুলো বদলায়নি শুধু সেগুলো আরেকবার, একটি সিঙ্কে
+    if (bad.length) {
+      const rs2 = bad.map((i) => {
+        const r = targets[i][0].insertText(targets[i][1], Word.InsertLocation.replace);
         if (fontName) applyFont(r);
         r.load('text');
         return r;
       });
-      await context.sync();
-
-      // প্রথম ব্যাচে জেনে নেওয়া কোন ফন্ট-স্লট এই Word-এ চলে
-      if (fontName && slots === null) {
-        slots = [];
-        for (const p of allSlots) {
-          try { rs.forEach((r) => { r.font[p] = fontName; }); await context.sync(); slots.push(p); } catch (e) { /* নেই */ }
-        }
-      }
-
-      // যাচাই: যেগুলো বদলায়নি শুধু সেগুলো একা একা আবার চেষ্টা
-      for (let i = 0; i < part.length; i++) {
-        const [w, conv, fn] = part[i];
-        let r = rs[i];
-        let ok = r.text.trim() === conv.trim();
-        for (let attempt = 0; !ok && attempt < 2; attempt++) {
-          try {
-            if (attempt === 0) {
-              r = w.insertText(conv, Word.InsertLocation.replace);
-            } else {
-              w.clear();
-              r = w.insertText(conv, Word.InsertLocation.start);
-            }
-            if (fontName) applyFont(r);
-            r.load('text');
-            await context.sync();
-            ok = r.text.trim() === conv.trim();
-            if (ok) healed++;
-          } catch (e) { /* পরের চেষ্টা */ }
-        }
-        if (ok) {
-          converted++;
-        } else {
-          failed.push(w.text);
-          if (fn) { try { w.font.name = fn; await context.sync(); } catch (e) {} } // আগের ফন্ট ফেরত
-        }
+      try { await context.sync(); } catch (e) { /* নিচে ব্যর্থ ধরা হবে */ }
+      bad.forEach((i, k) => {
+        let ok = false;
+        try { ok = rs2[k].text.trim() === targets[i][1].trim(); } catch (e) {}
+        if (ok) { healed++; converted++; } else { failed.push(i); }
+      });
+      if (failed.length) { // ব্যর্থ শব্দের আগের ফন্ট ফেরত
+        failed.forEach((i) => { if (targets[i][2]) targets[i][0].font.name = targets[i][2]; });
+        try { await context.sync(); } catch (e) {}
       }
     }
 
@@ -302,7 +293,7 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       (healed ? ' (' + healed + 'টি দ্বিতীয়বার চেষ্টায়)' : '') +
       (skipped ? ' বাদ (অন্য ফন্ট): ' + Object.entries(skipFonts).map(([f, c]) => f + ' ×' + c).join(', ') + '।' : '') +
       (mixed ? ' মিশ্র ফন্টের ' + mixed + 'টি শব্দ বাদ গেছে: ' + mixedSamples.join(' , ') + '।' : '') +
-      (failed.length ? ' ⚠ ' + failed.length + 'টি শব্দ বদলানো যায়নি: ' + failed.slice(0, 8).join(' , ') : ''),
+      (failed.length ? ' ⚠ ' + failed.length + 'টি শব্দ বদলানো যায়নি: ' + failed.slice(0, 8).map((i) => targets[i][0].text).join(' , ') : ''),
       failed.length ? 'err' : 'ok');
   }).catch((err) => setStatus('সমস্যা হয়েছে: ' + err.message, 'err'))
     .finally(() => { btn.disabled = false; });
