@@ -32,7 +32,7 @@
   <p class="sub"> <b id="ver" style="color:#EE0000">Qaari Tech: v17</b></p>
 
   <div class="card">
-    <label for="fontSelect">রূপান্তরের পর যে ইউনিকোড ফন্ট বসবে</label>
+    <label for="fontSelect">ফন্ট নির্বাচন করুন</label>
     <select id="fontSelect">
       <option value="BCC Purno">BCC Purno</option>
       <option value="Kalpurush">Kalpurush</option>
@@ -179,7 +179,7 @@ if (typeof Office !== 'undefined' && Office.onReady) {
   Office.onReady((info) => {
     isWord = info && info.host === Office.HostType.Word;
     if (!isWord) {
-      setStatus('ডকুমেন্ট থেকে কনভার্ট শুধু MS Word-এ কাজ করবে। নিচের পেস্ট বক্স ব্রাউজারেও কাজ করে।', 'info');
+      setStatus('MS Word-এর Add in এর জন্য। নিচের পেস্ট বক্স ব্রাউজারেও কাজ করে।', 'info');
       document.getElementById('convertSelectionBtn').disabled = true;
     }
   });
