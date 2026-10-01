@@ -87,7 +87,7 @@ const MAP = {};
 
   Object.assign(MAP, {
     // কার
-    'v':'া','w':'ি','x':'ী','y':'ু','z':'ু','–':'ণ্ড','~':'ূ','ƒ':'ূ','‚':'ূ',
+    'v':'া','w':'ি','x':'ী','y':'ু','z':'ু','~':'ূ','ƒ':'ূ','‚':'ূ',
     '„':'ৃ','…':'ৃ','†':'ে','‡':'ে','ˆ':'ৈ','‰':'ৈ','Š':'ৗ',
     // বিরাম
     '|':'।','&':'্‌',
@@ -109,7 +109,7 @@ const MAP = {};
     'ï':'শু','ð':'শ্চ','ñ':'শ্ছ','ò':'ষ্ণ','ó':'ষ্ট','ô':'ষ্ঠ','õ':'ষ্ফ',
     'ö':'স্খ','÷':'স্ট','ø':'স্ন','ù':'স্ফ','û':'হু','ü':'হৃ','ý':'হ্ন','þ':'হ্ম',
     // যতিচিহ্ন
-    'Ð':'-','Ñ':'-','Ò':'"','Ó':'"','Ô':"'",'Õ':"'"
+    'Ð':'ণ্ড','Ñ':'-','Ò':'"','Ó':'"','Ô':"'",'Õ':"'"
   });
   MAP['©'] = REPH;
 })();
@@ -234,7 +234,15 @@ function queueMixed(list) {
       protect.add('eq');
       (w.text.match(/\\[A-Za-z]+\d*/g) || []).forEach((m) => protect.add(m.slice(1)));
     }
-    const toks = [...new Set(w.text.split(DELIM).filter(Boolean))].filter((t) => !protect.has(t));
+    // Bijoy-অক্ষর (MAP-এ থাকা) ছাড়া যেকোনো চিহ্ন (।  /  –  ( ) , ইত্যাদি) টুকরো আলাদা করে
+    const raw = [];
+    let curTok = '';
+    for (const ch of w.text) {
+      if (ch in MAP) curTok += ch;
+      else { if (curTok) raw.push(curTok); curTok = ''; }
+    }
+    if (curTok) raw.push(curTok);
+    const toks = [...new Set(raw)].filter((t) => !protect.has(t));
     if (!toks.length || (toks.length === 1 && toks[0] === w.text)) continue;
     const ms = toks.map((t) => {
       const m = w.search(t.replace(/\^/g, '^^'), { matchCase: true });
@@ -393,7 +401,7 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
     // ধাপ ২ (শুধু দরকার হলে): বাদ পড়া শব্দ ধরা — আলাদা পদ্ধতিতে শব্দ তালিকা, আর
     // Bijoy ফন্ট অথবা আমাদের বসানো ফন্টে থাকা অবিবর্তিত ল্যাটিন/Bijoy অক্ষরের শব্দ
     let r2 = null;
-    if (left.length) {
+    if (left.length || r1.failed.length || (mixed - mixedMap.size) > 0) {
       const ws = sel.getTextRanges([' '], true);
       ws.load('items/text,items/font/name');
       await context.sync();
