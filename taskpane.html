@@ -29,7 +29,7 @@
 <body>
 
   <h1>Bijoy → Unicode কনভার্টার</h1>
-  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">সংস্করণ: v16</b></p>
+  <p class="sub">SutonnyMJ / Bijoy ANSI বাংলা টেক্সটকে ইউনিকোডে রূপান্তর করুন। <b id="ver" style="color:#00563f">Qaari Tech: v17</b></p>
 
   <div class="card">
     <label for="fontSelect">রূপান্তরের পর যে ইউনিকোড ফন্ট বসবে</label>
@@ -138,6 +138,13 @@ function convertBijoyToUnicode(input) {
   // ৩) দ্বিগুণ হসন্ত ঠিক করা
   s = s.replace(/\u09CD\u09CD+/g, '\u09CD');
 
+  // কার (া ী ু ূ ৃ ৗ ঁ) যদি ফলা/যুক্তের (্য ্র ...) আগে বসে, ফলা আগে আনা: দ+ু+্য → দ্যু
+  for (let k = 0; k < 4; k++) {
+    const t = s.replace(/([\u09BE\u09C0-\u09C3\u09D7\u0981])(\u09CD[\u0995-\u09B9]\u09BC?)/g, '$2$1');
+    if (t === s) break;
+    s = t;
+  }
+
   // ৪) রেফ: ব্যঞ্জন-ক্লাস্টারের আগে র্ বসানো
   // ব্যঞ্জন ও রেফের মাঝে া ী ু ূ ৃ ৗ কার থাকতে পারে (যেমন কর্তৃক = KZ…©K)
   s = s.replace(new RegExp('(' + CL + ')([\u09BE\u09C0-\u09C3\u09D7]*)' + REPH, 'g'), 'র\u09CD$1$2');
@@ -216,26 +223,40 @@ const LATIN_OR_GLYPH = /[A-Za-z‡†›¨©ÿ¯ª«š˜™¤¥§œ¶]/;
 const norm = (t) => t.replace(/\s+/g, ' ').trim();
 let slotsCache = null;
 
-// মিশ্র ফন্টের শব্দ ([GLv‡b, e¨vmva©] ইত্যাদি): কিনারার চিহ্ন ছেঁটে ভেতরের অংশ আলাদা করে খোঁজা
-const EDGE = /^[\[\](){}<>,.;:!?"'=+\/*%#@\-]+|[\[\](){}<>,.;:!?"'=+\/*%#@\-]+$/g;
+// মিশ্র ফন্টের শব্দ ([GLv‡b, e¨vmva©], {eq \f(a,b)} ইত্যাদি): চিহ্ন দিয়ে ভেঙে প্রতিটি অংশ আলাদা করে খোঁজা
+const DELIM = /[\\\[\](){}<>,;:=+\/*%#@"'!?.\-]+/;
 function queueMixed(list) {
   const items = [];
   for (const w of list) {
-    const core = w.text.replace(EDGE, '');
-    if (!core || core === w.text) continue;
-    const m = w.search(core.replace(/\^/g, '^^'), { matchCase: true });
-    m.load('items/text,items/font/name');
-    items.push({ w, core, m });
+    // ফিল্ড-কোডের কিওয়ার্ড (eq, \f, \s \up6 ...) কখনো কনভার্ট হবে না
+    const protect = new Set();
+    if (/[{\\]/.test(w.text)) {
+      protect.add('eq');
+      (w.text.match(/\\[A-Za-z]+\d*/g) || []).forEach((m) => protect.add(m.slice(1)));
+    }
+    const toks = [...new Set(w.text.split(DELIM).filter(Boolean))].filter((t) => !protect.has(t));
+    if (!toks.length || (toks.length === 1 && toks[0] === w.text)) continue;
+    const ms = toks.map((t) => {
+      const m = w.search(t.replace(/\^/g, '^^'), { matchCase: true });
+      m.load('items/text,items/font/name');
+      return { t, m };
+    });
+    items.push({ w, ms });
   }
   return items;
 }
 function finishMixed(items) {
   const map = new Map();
   for (const it of items) {
-    const r = it.m.items.find((x) => x.text === it.core && isBijoyFont(x.font.name || ''));
-    if (!r) continue;
-    const conv = convertBijoyToUnicode(it.core);
-    if (conv !== it.core) map.set(it.w, { range: r, orig: it.core, conv, fn: r.font.name, n: 1 });
+    const arr = [];
+    for (const { t, m } of it.ms) {
+      m.items.forEach((x) => {
+        if (x.text !== t || !isBijoyFont(x.font.name || '')) return; // শুধু Bijoy ফন্টের অংশ
+        const conv = convertBijoyToUnicode(t);
+        if (conv !== t) arr.push({ range: x, orig: t, conv, fn: x.font.name, n: 1 });
+      });
+    }
+    if (arr.length) map.set(it.w, arr);
   }
   return map;
 }
@@ -346,7 +367,7 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
     const jobs = [];
     for (const o of order) {
       if (o.mixedWord) {
-        if (mixedMap.has(o.mixedWord)) jobs.push(mixedMap.get(o.mixedWord));
+        if (mixedMap.has(o.mixedWord)) mixedMap.get(o.mixedWord).forEach((j) => jobs.push(j));
         continue;
       }
       const g = o.seg;
@@ -388,7 +409,7 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
         if (conv !== w.text) t2.push({ range: w, orig: w.text, conv, fn: bijoyFont ? fn : '', n: 1 });
       }
       const mi2 = queueMixed(mixed2);
-      if (mi2.length) { await context.sync(); finishMixed(mi2).forEach((j) => t2.push(j)); }
+      if (mi2.length) { await context.sync(); finishMixed(mi2).forEach((arr) => arr.forEach((j) => t2.push(j))); }
       r2 = await applyJobs(context, t2, fontName);
       left = await leftoverParas();
     }
