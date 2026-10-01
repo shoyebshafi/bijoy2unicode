@@ -399,7 +399,7 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
     let left = await leftoverParas();
 
     // ধাপ ২ (শুধু দরকার হলে): বাদ পড়া শব্দ ধরা — আলাদা পদ্ধতিতে শব্দ তালিকা, আর
-    // Bijoy ফন্ট অথবা আমাদের বসানো ফন্টে থাকা অবিবর্তিত ল্যাটিন/Bijoy অক্ষরের শব্দ
+    // এখনো Bijoy ফন্টে থাকা শব্দ
     let r2 = null;
     if (left.length || r1.failed.length || (mixed - mixedMap.size) > 0) {
       const ws = sel.getTextRanges([' '], true);
@@ -411,10 +411,9 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
         const fn = w.font.name || '';
         if (fn === '') { mixed2.push(w); continue; }
         const bijoyFont = fn !== '' && isBijoyFont(fn);
-        const marker = !!fontName && fn === fontName && !hasBengali.test(w.text) && LATIN_OR_GLYPH.test(w.text);
-        if (!bijoyFont && !marker) continue;
+        if (!bijoyFont) continue; // শুধু সত্যিকারের Bijoy ফন্ট; বেছে নেওয়া ফন্টের লেখা কখনো ছোঁয়া হবে না
         const conv = convertBijoyToUnicode(w.text);
-        if (conv !== w.text) t2.push({ range: w, orig: w.text, conv, fn: bijoyFont ? fn : '', n: 1 });
+        if (conv !== w.text) t2.push({ range: w, orig: w.text, conv, fn, n: 1 });
       }
       const mi2 = queueMixed(mixed2);
       if (mi2.length) { await context.sync(); finishMixed(mi2).forEach((arr) => arr.forEach((j) => t2.push(j))); }
