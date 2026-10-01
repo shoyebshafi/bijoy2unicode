@@ -222,6 +222,7 @@ const GLYPH = /[‡†›¨©ÿ¯ª«š˜™¤¥§œ¶]/;                 // শ
 const LATIN_OR_GLYPH = /[A-Za-z‡†›¨©ÿ¯ª«š˜™¤¥§œ¶]/;
 const norm = (t) => t.replace(/\s+/g, ' ').trim();
 let slotsCache = null;
+const csOk = {}; // কোন complex-script বৈশিষ্ট্য (boldBidirectional ইত্যাদি) এই Word-এ চলে
 
 // মিশ্র ফন্টের শব্দ ([GLv‡b, e¨vmva©], {eq \f(a,b)} ইত্যাদি): চিহ্ন দিয়ে ভেঙে প্রতিটি অংশ আলাদা করে খোঁজা
 const DELIM = /[\\\[\](){}<>,;:=+\/*%#@"'!?.\-]+/;
@@ -246,7 +247,7 @@ function queueMixed(list) {
     if (!toks.length || (toks.length === 1 && toks[0] === w.text)) continue;
     const ms = toks.map((t) => {
       const m = w.search(t.replace(/\^/g, '^^'), { matchCase: true });
-      m.load('items/text,items/font/name');
+      m.load('items/text,items/font/name,items/font/bold,items/font/italic,items/font/size');
       return { t, m };
     });
     items.push({ w, ms });
@@ -261,7 +262,7 @@ function finishMixed(items) {
       m.items.forEach((x) => {
         if (x.text !== t || !isBijoyFont(x.font.name || '')) return; // শুধু Bijoy ফন্টের অংশ
         const conv = convertBijoyToUnicode(t);
-        if (conv !== t) arr.push({ range: x, orig: t, conv, fn: x.font.name, n: 1 });
+        if (conv !== t) arr.push({ range: x, orig: t, conv, fn: x.font.name, n: 1, fmt: { bold: x.font.bold, italic: x.font.italic, size: x.font.size } });
       });
     }
     if (arr.length) map.set(it.w, arr);
@@ -285,9 +286,25 @@ async function applyJobs(context, targets, fontName) {
     (slotsCache || []).forEach((p) => { r.font[p] = fontName; });
   };
 
+  // বাংলা অক্ষর Word-এ complex script, তাই তার বোল্ড/ইটালিক/সাইজ আলাদা (Bidirectional) থাকে।
+  // মূল Bijoy লেখার বোল্ড/ইটালিক/সাইজ হুবহু বসানো হয়, যাতে কনভার্টের পর হঠাৎ বোল্ড না দেখায়।
+  for (const [p, key] of [['boldBidirectional', 'bold'], ['italicBidirectional', 'italic'], ['sizeBidirectional', 'size']]) {
+    if (csOk[p] !== undefined) continue;
+    const t = targets.find((j) => j.fmt && j.fmt[key] !== null && j.fmt[key] !== undefined);
+    if (!t) continue;
+    try { t.range.font[p] = t.fmt[key]; await context.sync(); csOk[p] = true; } catch (e) { csOk[p] = false; }
+  }
+  const applyFmt = (r, fmt) => {
+    if (!fmt) return;
+    if (fmt.bold === true || fmt.bold === false) { r.font.bold = fmt.bold; if (csOk.boldBidirectional) r.font.boldBidirectional = fmt.bold; }
+    if (fmt.italic === true || fmt.italic === false) { r.font.italic = fmt.italic; if (csOk.italicBidirectional) r.font.italicBidirectional = fmt.italic; }
+    if (typeof fmt.size === 'number' && fmt.size > 0 && csOk.sizeBidirectional) r.font.sizeBidirectional = fmt.size;
+  };
+
   targets.reverse(); // শেষ থেকে শুরুর দিকে
   const rs = targets.map((j) => {
     const r = j.range.insertText(j.conv, Word.InsertLocation.replace);
+    applyFmt(r, j.fmt);
     if (fontName) applyFont(r);
     r.load('text');
     return r;
@@ -304,6 +321,7 @@ async function applyJobs(context, targets, fontName) {
   if (bad.length) {
     const rs2 = bad.map((i) => {
       const r = targets[i].range.insertText(targets[i].conv, Word.InsertLocation.replace);
+      applyFmt(r, targets[i].fmt);
       if (fontName) applyFont(r);
       r.load('text');
       return r;
@@ -342,7 +360,7 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
     // ধাপ ১: অনুচ্ছেদ ধরে, পাশাপাশি Bijoy শব্দ জুড়ে একটি টুকরো
     const cols = paras.items.map((p) => {
       const c = p.getRange('Whole').intersectWith(sel).getTextRanges([' '], true);
-      c.load('items/text,items/font/name');
+      c.load('items/text,items/font/name,items/font/bold,items/font/italic,items/font/size,items/font/color,items/font/underline');
       return c;
     });
     await context.sync();
@@ -358,7 +376,8 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
           if (fn === '') { mixed++; mixedList.push(w); order.push({ mixedWord: w }); if (mixedSamples.length < 6) mixedSamples.push(w.text); cur = null; continue; }
           if (!isBijoyFont(fn)) { skipped++; skipFonts[fn] = (skipFonts[fn] || 0) + 1; cur = null; continue; }
         }
-        if (!cur) { cur = { words: [], fn }; segs.push(cur); order.push({ seg: cur }); }
+        const key = [fn, w.font.bold, w.font.italic, w.font.size, w.font.color, w.font.underline].join('|');
+        if (!cur || cur.key !== key) { cur = { words: [], fn, key, fmt: { bold: w.font.bold, italic: w.font.italic, size: w.font.size } }; segs.push(cur); order.push({ seg: cur }); }
         cur.words.push(w);
       }
     }
@@ -381,9 +400,9 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       const g = o.seg;
       const single = g.words.length === 1;
       if (single || norm(g.range.text) === norm(g.words.map((w) => w.text).join(' '))) {
-        jobs.push({ range: g.range, orig: single ? g.words[0].text : g.range.text, fn: g.fn, n: g.words.length });
+        jobs.push({ range: g.range, orig: single ? g.words[0].text : g.range.text, fn: g.fn, n: g.words.length, fmt: g.fmt });
       } else {
-        g.words.forEach((w) => jobs.push({ range: w, orig: w.text, fn: g.fn, n: 1 }));
+        g.words.forEach((w) => jobs.push({ range: w, orig: w.text, fn: g.fn, n: 1, fmt: g.fmt }));
       }
     }
     jobs.forEach((j) => { if (j.conv === undefined) j.conv = convertBijoyToUnicode(j.orig); });
@@ -403,7 +422,7 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
     let r2 = null;
     if (left.length || r1.failed.length || (mixed - mixedMap.size) > 0) {
       const ws = sel.getTextRanges([' '], true);
-      ws.load('items/text,items/font/name');
+      ws.load('items/text,items/font/name,items/font/bold,items/font/italic,items/font/size,items/font/color,items/font/underline');
       await context.sync();
       const t2 = [], mixed2 = [];
       for (const w of ws.items) {
@@ -413,7 +432,7 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
         const bijoyFont = fn !== '' && isBijoyFont(fn);
         if (!bijoyFont) continue; // শুধু সত্যিকারের Bijoy ফন্ট; বেছে নেওয়া ফন্টের লেখা কখনো ছোঁয়া হবে না
         const conv = convertBijoyToUnicode(w.text);
-        if (conv !== w.text) t2.push({ range: w, orig: w.text, conv, fn, n: 1 });
+        if (conv !== w.text) t2.push({ range: w, orig: w.text, conv, fn, n: 1, fmt: { bold: w.font.bold, italic: w.font.italic, size: w.font.size } });
       }
       const mi2 = queueMixed(mixed2);
       if (mi2.length) { await context.sync(); finishMixed(mi2).forEach((arr) => arr.forEach((j) => t2.push(j))); }
