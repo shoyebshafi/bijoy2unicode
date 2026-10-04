@@ -226,6 +226,47 @@ const csOk = {}; // কোন complex-script বৈশিষ্ট্য (boldBi
 
 // মিশ্র ফন্টের শব্দ ([GLv‡b, e¨vmva©], {eq \f(a,b)} ইত্যাদি): চিহ্ন দিয়ে ভেঙে প্রতিটি অংশ আলাদা করে খোঁজা
 const DELIM = /[\\\[\](){}<>,;:=+\/*%#@"'!?.\-]+/;
+// প্রতিটি অক্ষরের ফন্ট আলাদা করে দেখা (যেমন 18wU = ১৮ ইংরেজি + wU Bijoy):
+// শব্দের ভেতরে প্রতিটি Bijoy-সম্ভব অক্ষর Word-এর সার্চ দিয়ে খুঁজে তার ফন্ট দেখা হয়
+function queueChars(w) {
+  const chars = Array.from(w.text);
+  const ms = {};
+  [...new Set(chars.filter((c) => c in MAP))].forEach((c) => {
+    const m = w.search(c.replace(/\^/g, '^^'), { matchCase: true });
+    m.load('items/text,items/font/name,items/font/bold,items/font/italic,items/font/size');
+    ms[c] = m;
+  });
+  return { chars, ms };
+}
+function finishChars(cq, protect) {
+  const seen = {};
+  const info = cq.chars.map((c) => {
+    if (!(c in cq.ms)) return null;
+    seen[c] = seen[c] === undefined ? 0 : seen[c] + 1;
+    const x = cq.ms[c].items[seen[c]];
+    return x && x.text === c ? x : null;
+  });
+  const isB = (x) => !!x && isBijoyFont(x.font.name || '');
+  const arr = [];
+  let i = 0;
+  while (i < info.length) {
+    if (!isB(info[i])) { i++; continue; }
+    let j = i;
+    while (j + 1 < info.length && isB(info[j + 1])) j++;
+    const text = cq.chars.slice(i, j + 1).join('');
+    if (!protect.has(text)) {
+      const conv = convertBijoyToUnicode(text);
+      if (conv !== text) {
+        const first = info[i], last = info[j];
+        arr.push({ range: i === j ? first : first.expandTo(last), orig: text, conv, fn: first.font.name, n: 1,
+                   fmt: { bold: first.font.bold, italic: first.font.italic, size: first.font.size } });
+      }
+    }
+    i = j + 1;
+  }
+  return arr;
+}
+
 function queueMixed(list) {
   const items = [];
   for (const w of list) {
@@ -244,7 +285,10 @@ function queueMixed(list) {
     }
     if (curTok) raw.push(curTok);
     const toks = [...new Set(raw)].filter((t) => !protect.has(t));
-    if (!toks.length || (toks.length === 1 && toks[0] === w.text)) continue;
+    if (!toks.length) continue;
+    // টুকরো করা যায় না (যেমন 18wU), বা সংখ্যা+অক্ষর মেশানো: অক্ষর ধরে ধরে ফন্ট দেখা
+    const needsChar = (toks.length === 1 && toks[0] === w.text) || (/\d/.test(w.text) && /[A-Za-z]/.test(w.text));
+    if (needsChar) { items.push({ w, cq: queueChars(w), protect }); continue; }
     const ms = toks.map((t) => {
       const m = w.search(t.replace(/\^/g, '^^'), { matchCase: true });
       m.load('items/text,items/font/name,items/font/bold,items/font/italic,items/font/size');
@@ -257,6 +301,11 @@ function queueMixed(list) {
 function finishMixed(items) {
   const map = new Map();
   for (const it of items) {
+    if (it.cq) {
+      const a2 = finishChars(it.cq, it.protect);
+      if (a2.length) map.set(it.w, a2);
+      continue;
+    }
     const arr = [];
     for (const { t, m } of it.ms) {
       m.items.forEach((x) => {
