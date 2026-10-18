@@ -267,6 +267,73 @@ const hasBengali = /[\u0980-\u09FF]/;
 const GLYPH = /[‡†›¨©ÿ¯ª«š˜™¤¥§œ¶]/;                 // শুধু Bijoy-তে আসে, ইংরেজিতে নয়
 const LATIN_OR_GLYPH = /[A-Za-z‡†›¨©ÿ¯ª«š˜™¤¥§œ¶]/;
 const norm = (t) => t.replace(/\s+/g, ' ').trim();
+// ==FIELD-START==
+// Ctrl+F9 ইকুয়েশন (EQ) ফিল্ডের কোড: Word-এর সাধারণ টেক্সট-রেঞ্জে ফিল্ড কোড আসে না,
+// তাই Field API দিয়ে কোড সরাসরি পড়ে, শুধু আর্গুমেন্টের লেখা কনভার্ট করে আবার লেখা হয়।
+// সুইচ (\f \s \up6 ...), বন্ধনী, কমা, সেমিকোলন এবং 'eq' কখনো বদলায় না।
+const EQ_SYNTAX = /(\\[A-Za-z]+\d*|[(),;])/;
+function convertEqCode(code, selNorm, onlyGlyph) {
+  const m = code.match(/^(\s*eq\s*)([\s\S]*)$/i);
+  if (!m) return null;                       // শুধু EQ ফিল্ড
+  const parts = m[2].split(EQ_SYNTAX);       // বেজোড় ইনডেক্স = সুইচ/বিভাজক
+  let changed = false;
+  const out = parts.map((seg, i) => {
+    if (i % 2 === 1 || !seg.trim() || /[\u0980-\u09FF]/.test(seg)) return seg;
+    let res = seg;
+    if (selNorm) {
+      const sn = seg.replace(/\s+/g, ' ').trim();
+      if (selNorm.includes(sn)) res = convertBijoyToUnicode(seg);                       // পুরো অংশ সিলেকশনে
+      else if (seg.includes(selNorm)) res = seg.replace(selNorm, convertBijoyToUnicode(selNorm)); // অংশের একটুখানি সিলেক্ট
+    } else if (!onlyGlyph || /[‡†›¨©ÿ¯ª«š˜™¤¥§œ¶]/.test(seg)) {
+      res = convertBijoyToUnicode(seg);
+    }
+    if (res !== seg) changed = true;
+    return res;
+  });
+  return changed ? m[1] + out.join('') : null;
+}
+// ==FIELD-END==
+
+async function convertFieldCodes(context, sel, paras, fontName) {
+  const res = { n: 0, err: '' };
+  let fields = [];
+  try {
+    sel.load('text');
+    const cols = paras.items.map((p) => { const f = p.fields; f.load('items/code'); return f; });
+    await context.sync();
+    fields = [].concat(...cols.map((c) => c.items));
+    const selNorm = (sel.text || '').replace(/\s+/g, ' ').trim();
+
+    // ধাপ ক: সিলেকশনের সাথে মেলে এমন; না মিললে ধাপ খ: শুধু স্পষ্ট Bijoy-চিহ্নযুক্ত অংশ
+    const plan = (selNormUse, onlyGlyph) => fields
+      .map((f) => ({ f, nc: f.code ? convertEqCode(f.code, selNormUse, onlyGlyph) : null }))
+      .filter((x) => x.nc !== null);
+    let todo = selNorm ? plan(selNorm, false) : [];
+    if (!todo.length) todo = plan('', true);
+
+    for (const { f, nc } of todo) {
+      f.code = nc;
+      try { f.updateResult(); } catch (e) { /* পুরনো Word-এ নেই */ }
+      await context.sync();
+      if (fontName) {                       // ফিল্ড সিলেক্ট করে ফন্ট (কোড + রেজাল্ট) বসানো
+        try {
+          f.select();
+          await context.sync();
+          const r = context.document.getSelection();
+          r.font.name = fontName;
+          (slotsCache || []).forEach((p) => { r.font[p] = fontName; });
+          await context.sync();
+        } catch (e) { res.err = 'ফন্ট বসানো যায়নি'; }
+      }
+      res.n++;
+    }
+    if (res.n) { try { sel.select(); await context.sync(); } catch (e) {} } // আগের সিলেকশন ফেরত
+  } catch (e) {
+    res.err = 'ফিল্ড API পাওয়া যায়নি বা ব্যর্থ: ' + (e && e.message ? e.message : '');
+  }
+  return res;
+}
+
 let slotsCache = null;
 const csOk = {}; // কোন complex-script বৈশিষ্ট্য (boldBidirectional ইত্যাদি) এই Word-এ চলে
 
@@ -535,6 +602,8 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       left = await leftoverParas();
     }
 
+    const fres = await convertFieldCodes(context, sel, paras, fontName);
+
     sel.untrack();
 
     const failed = r1.failed.concat(r2 ? r2.failed : []);
@@ -547,6 +616,8 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       (skipped ? ' বাদ (অন্য ফন্ট): ' + Object.entries(skipFonts).map(([f, c]) => f + ' ×' + c).join(', ') + '।' : '') +
       (mixed - mixedMap.size > 0 ? ' মিশ্র ফন্টের ' + (mixed - mixedMap.size) + 'টি শব্দ পুরোপুরি ধরা যায়নি, যেমন: ' + mixedSamples.join(' , ') + '।' : '') +
       (failed.length ? ' ⚠ বদলানো যায়নি: ' + failed.slice(0, 5).join(' | ') : '') +
+      (fres.n ? ' ' + fres.n + 'টি ইকুয়েশন ফিল্ডের কোড কনভার্ট হয়েছে।' : '') +
+      (fres.err ? ' (ফিল্ড: ' + fres.err + ')' : '') +
       (left.length ? ' ⚠ এখনো ' + left.length + 'টি অনুচ্ছেদে Bijoy অক্ষর আছে: ' + leftTokens.join(' , ') : ''),
       (failed.length || left.length) ? 'err' : 'ok');
   }).catch((err) => setStatus('সমস্যা হয়েছে: ' + err.message, 'err'))
