@@ -146,6 +146,10 @@ function convertBijoyToUnicode(input) {
   }
 
   // ৪) রেফ: ব্যঞ্জন-ক্লাস্টারের আগে র্ বসানো
+  // র-এ য-ফলা (রেফ নয়, যেমন র‌্যাডুলা, র‌্যাব): র ও ্য-এর মাঝে ZWNJ না থাকলে Word রেফ বানিয়ে ফেলে।
+  // Bijoy-তে রেফ সবসময় © দিয়ে লেখা হয়, তাই এখানে র+্য মানে র-এ য-ফলা। (্র-এর পরের র বাদ)
+  s = s.replace(/(^|[^\u09CD])\u09B0(\u09CD\u09AF)/g, '$1\u09B0\u200C$2');
+
   // ব্যঞ্জন ও রেফের মাঝে া ী ু ূ ৃ ৗ কার থাকতে পারে (যেমন কর্তৃক = KZ…©K)
   s = s.replace(new RegExp('(' + CL + ')([\u09BE\u09C0-\u09C3\u09D7]*)' + REPH, 'g'), 'র\u09CD$1$2');
 
@@ -198,15 +202,57 @@ document.getElementById('quickClearBtn').addEventListener('click', () => {
   document.getElementById('quickOutput').value = '';
 });
 
+// কপি করার সময় নির্বাচিত ইউনিকোড ফন্টের নামসহ HTML ক্লিপবোর্ডে রাখা হয়,
+// যাতে Word-এ পেস্ট করলে জায়গার ফন্ট (যেমন SutonnyMJ/Vrinda) নয়, বেছে নেওয়া ফন্টই বসে
+function htmlForClipboard(text, font) {
+  const f = font
+    ? "font-family:'" + font + "';mso-ascii-font-family:'" + font + "';mso-hansi-font-family:'" + font +
+      "';mso-bidi-font-family:'" + font + "';mso-fareast-font-family:'" + font + "';"
+    : '';
+  const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return '<html><body><!--StartFragment-->' +
+    text.split(/\r?\n/).map((line) => '<p style="margin:0;' + f + '">' + (line ? esc(line) : '&nbsp;') + '</p>').join('') +
+    '<!--EndFragment--></body></html>';
+}
+
+const quickOutEl = document.getElementById('quickOutput');
+function applyOutputFont() {
+  const font = document.getElementById('fontSelect').value;
+  quickOutEl.style.fontFamily = font ? "'" + font + "', 'Kalpurush', 'Nirmala UI', sans-serif" : '';
+}
+document.getElementById('fontSelect').addEventListener('change', applyOutputFont);
+applyOutputFont();
+
+// বক্স থেকে হাতে সিলেক্ট করে Ctrl+C / রাইট-ক্লিক কপি করলেও একই (ফন্টসহ) কপি হবে
+quickOutEl.addEventListener('copy', (e) => {
+  const font = document.getElementById('fontSelect').value;
+  const sel = quickOutEl.value.substring(quickOutEl.selectionStart, quickOutEl.selectionEnd) || quickOutEl.value;
+  if (!e.clipboardData) return;
+  e.clipboardData.setData('text/plain', sel);
+  e.clipboardData.setData('text/html', htmlForClipboard(sel, font));
+  e.preventDefault();
+});
+
 document.getElementById('copyBtn').addEventListener('click', async () => {
-  const out = document.getElementById('quickOutput');
+  const out = quickOutEl;
+  const font = document.getElementById('fontSelect').value;
+  let ok = false;
   try {
-    await navigator.clipboard.writeText(out.value);
-  } catch (e) {
-    out.select();
-    document.execCommand('copy');
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([htmlForClipboard(out.value, font)], { type: 'text/html' }),
+        'text/plain': new Blob([out.value], { type: 'text/plain' })
+      })]);
+      ok = true;
+    }
+  } catch (e) { /* নিচের বিকল্পে যাবে */ }
+  if (!ok) {
+    try { out.focus(); out.select(); ok = document.execCommand('copy'); } catch (e) {} // 'copy' ইভেন্ট হ্যান্ডলার ফন্টসহ বসায়
   }
-  setStatus('কপি হয়েছে।', 'ok');
+  if (!ok) {
+    try { await navigator.clipboard.writeText(out.value); ok = true; } catch (e) {}
+  }
+  setStatus(ok ? 'কপি হয়েছে।' : 'কপি করা যায়নি, বক্স থেকে হাতে সিলেক্ট করে কপি করুন।', ok ? 'ok' : 'err');
 });
 
 function isBijoyFont(name) {
