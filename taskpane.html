@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="bn">
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
-<title>Bijoy → Unicode</title>
+<title>Bijoy ⇄ Unicode</title>
 <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
 <style>
   * { box-sizing: border-box; }
@@ -24,46 +24,57 @@
   #status { font-size:12px; margin-top:8px; min-height:16px; }
   #status.ok { color:#00693e; } #status.err { color:#b3261e; } #status.info { color:#666; }
   .row { display:flex; gap:8px; } .row > * { flex:1; }
+  .row.mid { align-items:center; }
+  .row.mid .arrow { flex:0 0 auto; font-size:20px; color:#00563f; margin-top:8px; line-height:1; }
+  .hint { font-size:11px; color:#666; margin-top:6px; }
+  #bijoyBox { font-family:"SutonnyMJ","Nirmala UI",sans-serif; }
 </style>
 </head>
 <body>
 
-  <h1>Bijoy → Unicode কনভার্টার</h1>
-  <p class="sub"> <b id="ver" style="color:#EE0000">Qaari Tech: v17</b></p>
+  <h1>Bijoy ⇄ Unicode Converter</h1>
+  <p class="sub"> <b id="ver" style="color:#EE0000">Qaari Tech: v18</b></p>
 
   <div class="card">
-    <label for="fontSelect">ফন্ট নির্বাচন করুন</label>
+    <label for="fontSelect">Select Unicode font</label>
     <select id="fontSelect">
       <option value="BCC Purno">BCC Purno</option>
+      <option value="SutonnyOMJ">Sutonny OMJ</option>
       <option value="Kalpurush">Kalpurush</option>
       <option value="Siyam Rupali">Siyam Rupali</option>
       <option value="Nikosh">Nikosh</option>
       <option value="Noto Sans Bengali">Noto Sans Bengali</option>
-      <option value="">(ফন্ট পরিবর্তন করবেন না)</option>
+      <option value="">(Do not change the font)</option>
     </select>
   </div>
 
   <div class="card">
-    <label>ডকুমেন্টে সিলেক্ট করা টেক্সট কনভার্ট করুন</label>
+    <label>Convert the text selected</label>
     <label style="font-weight:400; display:flex; gap:6px; align-items:flex-start; margin-bottom:0;">
       <input type="checkbox" id="onlyBijoy" checked style="margin-top:3px;">
-      <span>শুধু Bijoy ফন্ট কনভার্ট হবে; ইংরেজি/অন্য ফন্ট অপরিবর্তিত থাকবে</span>
+      <span>English text stays unchanged</span>
     </label>
-    <input id="extraFonts" placeholder="অতিরিক্ত Bijoy ফন্টের নাম (কমা দিয়ে), যেমন: SiyamRupali_ANSI" style="width:100%;margin-top:8px;padding:6px;border:1px solid #ccc;border-radius:6px;font-size:12px;font-family:inherit;">
-    <button id="convertSelectionBtn">সিলেক্ট করা টেক্সট কনভার্ট করুন</button>
+    <input id="extraFonts" placeholder="Extra Bijoy font names (with comma)" style="width:100%;margin-top:8px;padding:6px;border:1px solid #ccc;border-radius:6px;font-size:12px;font-family:inherit;">
+    <button id="convertSelectionBtn">Convert to Unicode</button>
+    <button id="convertToBijoyBtn">Convert to Bijoy</button>
+    <div class="hint">This feature for MS Word Add-ins</div>
     <div id="status"></div>
   </div>
 
   <div class="card">
-    <label for="quickInput">অথবা এখানে পেস্ট করে দ্রুত কনভার্ট করুন</label>
-    <textarea id="quickInput" placeholder="এখানে Bijoy/SutonnyMJ টেক্সট পেস্ট করুন..."></textarea>
-    <div class="row">
-      <button id="quickConvertBtn">কনভার্ট করুন</button>
+    <label for="uniBox">Unicode Text</label>
+    <textarea id="uniBox"></textarea>
+    <div class="row mid">
+      <button id="quickConvertBtn">Convert</button>
+      <span class="arrow" aria-hidden="true">↔</span>
       <button id="quickClearBtn" class="secondary" type="button">Clear</button>
     </div>
-    <label style="margin-top:10px;">ফলাফল (ইউনিকোড)</label>
-    <textarea id="quickOutput" readonly placeholder="ফলাফল এখানে দেখাবে..."></textarea>
-    <button id="copyBtn" class="secondary">কপি করুন</button>
+    <label for="bijoyBox" style="margin-top:10px;">Bijoy Text</label>
+    <textarea id="bijoyBox"></textarea>
+    <div class="row">
+      <button id="copyUniBtn" class="secondary" type="button">Copy Unicode</button>
+      <button id="copyBijoyBtn" class="secondary" type="button">Copy Bijoy</button>
+    </div>
   </div>
 
 <script>
@@ -172,10 +183,128 @@ function convertBijoyToUnicode(input) {
 
 // ==CONVERTER-END==
 
+// ==REVERSE-START==
+// Unicode Bangla -> Bijoy (SutonnyMJ). Only Bengali characters change; everything else passes through.
+const canonNukta = (t) => t.replace(/\u09A1\u09BC/g, '\u09DC').replace(/\u09A2\u09BC/g, '\u09DD').replace(/\u09AF\u09BC/g, '\u09DF');
+const U2B = {}, CONJ = {}, HALF = {};
+(function () {
+  for (const k of 'KLMNOPQRSTUVWXYZ_`abcdefghijklmnopqrstu') U2B[canonNukta(MAP[k])] = k;
+  '0123456789'.split('').forEach((d) => { U2B[MAP[d]] = d; });
+  U2B['।'] = '|';
+  for (const [k, v0] of Object.entries(MAP)) {
+    const v = canonNukta(v0);
+    if (v.length >= 3 && v[1] === '্' && /^[\u0995-\u09B9]/.test(v) && !/[\u09BE-\u09CC\u09D7]/.test(v)) {
+      if (!(v in CONJ)) CONJ[v] = k;
+    } else if (v.length === 2 && v[1] === '্' && /^[\u0995-\u09B9]/.test(v) && !(v[0] in HALF)) {
+      HALF[v[0]] = k;
+    }
+  }
+  Object.assign(CONJ, { 'জ্ঞ':'Á', 'ক্ষ':'¶', 'ণ্ড':'Ð', 'ন্ত':'šÍ', 'ন্দ':'›`', 'স্ত':'¯Í', 'স্থ':'¯’',
+    'ম্প':'¤ú', 'স্প':'¯ú', 'স্ব':'¯^', 'স্ম':'¯§', 'স্ন':'¯œ', 'ম্ম':'¤§' });
+})();
+
+const B_VOWEL = { 'অ':'A', 'আ':'Av', 'ই':'B', 'ঈ':'C', 'উ':'D', 'ঊ':'E', 'ঋ':'F', 'এ':'G', 'ঐ':'H', 'ও':'I', 'ঔ':'J' };
+const B_KAR = { 'া':'v', 'ি':'w', 'ী':'x', 'ু':'y', 'ূ':'~', 'ৃ':'„', 'ে':'‡', 'ৈ':'ˆ', 'ৗ':'Š' };
+const PHALA = { 'য':'¨', 'ব':'¦', 'ম':'¥', 'ন':'œ', 'ল':'¬', 'ত':'—', 'ভ':'¢' };
+const AFTER_HALF = { 'ত':'Í', 'থ':'’', 'প':'ú' };
+const MERGE_U = { 'শ':'ï', 'গ':'¸', 'হ':'û' };
+const B_PUNCT = { '‘':'Ô', '’':'Õ', '“':'Ò', '”':'Ó', '–':'-', '—':'-', '…':'...' };
+
+function phalaGlyph(c, prev) {
+  if (c === 'র') return 'টঠডঢফ'.includes(prev) ? '«' : 'দধবঘঙ'.includes(prev) ? 'ª' : 'Ö';
+  if (c === 'ল' && prev === 'প') return 'ø';
+  return PHALA[c];
+}
+
+// consonants joined by hasant (e.g. [ক,ষ,ম]) -> Bijoy glyph string
+function clusterToBijoy(cons) {
+  let out = '', i = 0, prev = '', lastHalf = false;
+  while (i < cons.length) {
+    let hit = false;
+    for (let len = Math.min(3, cons.length - i); len >= 2 && !hit; len--) {
+      const key = cons.slice(i, i + len).join('্');
+      if (CONJ[key]) { out += CONJ[key]; i += len; hit = true; prev = 'conj'; lastHalf = false; }
+    }
+    if (hit) continue;
+    const c = cons[i];
+    if (i === 0 || lastHalf) {
+      const next = cons[i + 1];
+      if (next !== undefined && HALF[c] && !PHALA[next] && next !== 'র') {
+        out += HALF[c]; lastHalf = true; prev = c; i++; continue;
+      }
+      out += (lastHalf && AFTER_HALF[c]) || U2B[c];
+      prev = c; lastHalf = false; i++;
+      continue;
+    }
+    const g = phalaGlyph(c, prev);
+    out += g !== undefined ? g : '&' + U2B[c];
+    prev = c; i++;
+  }
+  return out;
+}
+
+function convertUnicodeToBijoy(input) {
+  const s = canonNukta(input.replace(/\u09CB/g, '\u09C7\u09BE').replace(/\u09CC/g, '\u09C7\u09D7')); // ো ৌ -> ে + া / ৗ
+  const CONS = /[\u0995-\u09B9\u09DC\u09DD\u09DF]/;
+  const KAR = /[\u09BE\u09BF\u09C0\u09C1\u09C2\u09C3\u09C7\u09C8\u09D7]/;
+  const n = s.length;
+  let out = '', i = 0;
+  while (i < n) {
+    const ch = s[i];
+    if (CONS.test(ch)) {
+      let j = i, reph = false;
+      if (ch === 'র' && s[j + 1] === '্' && j + 2 < n && CONS.test(s[j + 2])) { reph = true; j += 2; }   // র্ + consonant
+      const cons = [s[j]];
+      j++;
+      for (;;) {                                  // consonant + (ZWNJ) + hasant + consonant ...
+        let k = j;
+        if (s[k] === '\u200C' || s[k] === '\u200D') k++;
+        if (s[k] === '্' && k + 1 < n && CONS.test(s[k + 1])) { cons.push(s[k + 1]); j = k + 2; } else break;
+      }
+      let pre = '', post = '';
+      const below = [];
+      while (j < n && KAR.test(s[j])) {
+        const k = s[j];
+        if (k === 'ি' || k === 'ে' || k === 'ৈ') pre += B_KAR[k];
+        else if (k === 'ু' || k === 'ূ' || k === 'ৃ') below.push(k);
+        else post += B_KAR[k];
+        j++;
+      }
+      let g = clusterToBijoy(cons);
+      const joined = cons.join('্'), last = cons[cons.length - 1], single = cons.length === 1;
+      let gk = '';
+      for (const k of below) {
+        if (k === 'ু' && single && MERGE_U[last]) { g = MERGE_U[last]; continue; }           // শু গু হু
+        if (k === 'ৃ' && single && last === 'হ') { g = 'ü'; continue; }                     // হৃ
+        if (k === 'ু' && (joined === 'স্ত' || joined === 'ন্ত')) { g = g.replace(/Í$/, '‘'); continue; } // স্তু ন্তু
+        if (k === 'ু' && last === 'র') { gk += 'æ'; continue; }                              // রু, ্রু
+        if (k === 'ু' && single && 'টঠডঢ'.includes(last)) { gk += 'z'; continue; }           // টু ঠু ডু ঢু
+        gk += (k === 'ৃ' && reph) ? '…' : B_KAR[k];
+      }
+      if (gk) g = g.endsWith('¨') ? g.slice(0, -1) + gk + '¨' : g + gk;                       // ু ূ ৃ come before ্য
+      out += pre + g + (reph ? '©' : '') + post;
+      i = j;
+    } else if (ch in B_VOWEL) { out += B_VOWEL[ch]; i++; }
+    else if (ch === '\u200C' || ch === '\u200D') { i++; }
+    else if (ch in B_KAR) { out += B_KAR[ch]; i++; }
+    else if (ch === '্') { out += '&'; i++; }
+    else if (ch in U2B) { out += U2B[ch]; i++; }            // ং ঃ ঁ ৎ digits ।
+    else if (ch in B_PUNCT) { out += B_PUNCT[ch]; i++; }
+    else { out += ch; i++; }
+  }
+  return out;
+}
+// ==REVERSE-END==
+
+
 function setStatus(msg, kind) {
   const el = document.getElementById('status');
   el.textContent = msg;
   el.className = kind || '';
+}
+
+function setBusy(b) {
+  ['convertSelectionBtn', 'convertToBijoyBtn'].forEach((id) => { document.getElementById(id).disabled = b; });
 }
 
 let isWord = false;
@@ -183,27 +312,37 @@ if (typeof Office !== 'undefined' && Office.onReady) {
   Office.onReady((info) => {
     isWord = info && info.host === Office.HostType.Word;
     if (!isWord) {
-      setStatus('MS Word-এর Add in এর জন্য। নিচের পেস্ট বক্স ব্রাউজারেও কাজ করে।', 'info');
-      document.getElementById('convertSelectionBtn').disabled = true;
+      setStatus('The Unicode / Bijoy boxes below also work in a browser.', 'info');
+      setBusy(true);
     }
   });
 } else {
-  setStatus('ডকুমেন্ট থেকে কনভার্ট শুধু MS Word-এ কাজ করবে। নিচের পেস্ট বক্স ব্রাউজারেও কাজ করে।', 'info');
-  document.getElementById('convertSelectionBtn').disabled = true;
+  setStatus('The Unicode / Bijoy boxes below also work in a browser.', 'info');
+  setBusy(true);
 }
 
+// ---------- Manual boxes: Unicode Text  <->  Bijoy Text ----------
+const uniBox = document.getElementById('uniBox');
+const bijoyBox = document.getElementById('bijoyBox');
+let lastEdited = 'uni'; // the box the user typed or pasted into last
+uniBox.addEventListener('input', () => { lastEdited = 'uni'; });
+bijoyBox.addEventListener('input', () => { lastEdited = 'bijoy'; });
+
 document.getElementById('quickConvertBtn').addEventListener('click', () => {
-  document.getElementById('quickOutput').value =
-    convertBijoyToUnicode(document.getElementById('quickInput').value);
+  let src = lastEdited;
+  if (src === 'uni' && !uniBox.value.trim() && bijoyBox.value.trim()) src = 'bijoy';
+  if (src === 'bijoy' && !bijoyBox.value.trim() && uniBox.value.trim()) src = 'uni';
+  if (src === 'uni') bijoyBox.value = convertUnicodeToBijoy(uniBox.value);
+  else uniBox.value = convertBijoyToUnicode(bijoyBox.value);
 });
 
 document.getElementById('quickClearBtn').addEventListener('click', () => {
-  document.getElementById('quickInput').value = '';
-  document.getElementById('quickOutput').value = '';
+  uniBox.value = '';
+  bijoyBox.value = '';
+  lastEdited = 'uni';
 });
 
-// কপি করার সময় নির্বাচিত ইউনিকোড ফন্টের নামসহ HTML ক্লিপবোর্ডে রাখা হয়,
-// যাতে Word-এ পেস্ট করলে জায়গার ফন্ট (যেমন SutonnyMJ/Vrinda) নয়, বেছে নেওয়া ফন্টই বসে
+// Copy with the font name in the HTML clipboard, so pasting into Word keeps the intended font
 function htmlForClipboard(text, font) {
   const f = font
     ? "font-family:'" + font + "';mso-ascii-font-family:'" + font + "';mso-hansi-font-family:'" + font +
@@ -215,48 +354,52 @@ function htmlForClipboard(text, font) {
     '<!--EndFragment--></body></html>';
 }
 
-const quickOutEl = document.getElementById('quickOutput');
+const fontFor = (el) => (el === bijoyBox ? 'SutonnyMJ' : document.getElementById('fontSelect').value);
+
 function applyOutputFont() {
   const font = document.getElementById('fontSelect').value;
-  quickOutEl.style.fontFamily = font ? "'" + font + "', 'Kalpurush', 'Nirmala UI', sans-serif" : '';
+  uniBox.style.fontFamily = font ? "'" + font + "', 'Kalpurush', 'Nirmala UI', sans-serif" : '';
 }
 document.getElementById('fontSelect').addEventListener('change', applyOutputFont);
 applyOutputFont();
 
-// বক্স থেকে হাতে সিলেক্ট করে Ctrl+C / রাইট-ক্লিক কপি করলেও একই (ফন্টসহ) কপি হবে
-quickOutEl.addEventListener('copy', (e) => {
-  const font = document.getElementById('fontSelect').value;
-  const sel = quickOutEl.value.substring(quickOutEl.selectionStart, quickOutEl.selectionEnd) || quickOutEl.value;
-  if (!e.clipboardData) return;
-  e.clipboardData.setData('text/plain', sel);
-  e.clipboardData.setData('text/html', htmlForClipboard(sel, font));
-  e.preventDefault();
+// Manual select + Ctrl+C / right-click copy behaves the same way (font included)
+[uniBox, bijoyBox].forEach((el) => {
+  el.addEventListener('copy', (e) => {
+    const sel = el.value.substring(el.selectionStart, el.selectionEnd) || el.value;
+    if (!e.clipboardData) return;
+    e.clipboardData.setData('text/plain', sel);
+    e.clipboardData.setData('text/html', htmlForClipboard(sel, fontFor(el)));
+    e.preventDefault();
+  });
 });
 
-document.getElementById('copyBtn').addEventListener('click', async () => {
-  const out = quickOutEl;
-  const font = document.getElementById('fontSelect').value;
+async function copyBox(el) {
+  const font = fontFor(el);
   let ok = false;
   try {
     if (navigator.clipboard && window.ClipboardItem) {
       await navigator.clipboard.write([new ClipboardItem({
-        'text/html': new Blob([htmlForClipboard(out.value, font)], { type: 'text/html' }),
-        'text/plain': new Blob([out.value], { type: 'text/plain' })
+        'text/html': new Blob([htmlForClipboard(el.value, font)], { type: 'text/html' }),
+        'text/plain': new Blob([el.value], { type: 'text/plain' })
       })]);
       ok = true;
     }
-  } catch (e) { /* নিচের বিকল্পে যাবে */ }
+  } catch (e) { /* fall back below */ }
   if (!ok) {
-    try { out.focus(); out.select(); ok = document.execCommand('copy'); } catch (e) {} // 'copy' ইভেন্ট হ্যান্ডলার ফন্টসহ বসায়
+    try { el.focus(); el.select(); ok = document.execCommand('copy'); } catch (e) {} // the 'copy' handler adds the font
   }
   if (!ok) {
-    try { await navigator.clipboard.writeText(out.value); ok = true; } catch (e) {}
+    try { await navigator.clipboard.writeText(el.value); ok = true; } catch (e) {}
   }
-  setStatus(ok ? 'কপি হয়েছে।' : 'কপি করা যায়নি, বক্স থেকে হাতে সিলেক্ট করে কপি করুন।', ok ? 'ok' : 'err');
-});
+  setStatus(ok ? 'Copied.' : 'Could not copy. Select the text in the box and copy it manually.', ok ? 'ok' : 'err');
+}
+document.getElementById('copyUniBtn').addEventListener('click', () => copyBox(uniBox));
+document.getElementById('copyBijoyBtn').addEventListener('click', () => copyBox(bijoyBox));
 
 function isBijoyFont(name) {
   const n = name.toLowerCase().replace(/\s+/g, '');
+  if (/omj/.test(n)) return false; // SutonnyOMJ is a Unicode font
   if (/MJ/.test(name) || /bijoy|sutonny|ansi|adorsho|adarsha/.test(n)) return true;
   const extra = (document.getElementById('extraFonts').value || '')
     .split(',').map((x) => x.trim().toLowerCase().replace(/\s+/g, '')).filter(Boolean);
@@ -394,6 +537,7 @@ async function applyJobs(context, targets, fontName) {
     if (fmt.bold === true || fmt.bold === false) { r.font.bold = fmt.bold; if (csOk.boldBidirectional) r.font.boldBidirectional = fmt.bold; }
     if (fmt.italic === true || fmt.italic === false) { r.font.italic = fmt.italic; if (csOk.italicBidirectional) r.font.italicBidirectional = fmt.italic; }
     if (typeof fmt.size === 'number' && fmt.size > 0 && csOk.sizeBidirectional) r.font.sizeBidirectional = fmt.size;
+    if (fmt.setSize && typeof fmt.size === 'number' && fmt.size > 0) r.font.size = fmt.size;
   };
 
   targets.reverse(); // শেষ থেকে শুরুর দিকে
@@ -440,9 +584,8 @@ async function applyJobs(context, targets, fontName) {
 document.getElementById('convertSelectionBtn').addEventListener('click', () => {
   const fontName = document.getElementById('fontSelect').value;
   const onlyBijoy = document.getElementById('onlyBijoy').checked;
-  const btn = document.getElementById('convertSelectionBtn');
-  btn.disabled = true;
-  setStatus('চলছে…', 'info');
+  setBusy(true);
+  setStatus('Working…', 'info');
 
   Word.run(async (context) => {
     const sel = context.document.getSelection();
@@ -541,16 +684,119 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
     const leftTokens = [];
     left.forEach((t) => t.split(/\s+/).forEach((x) => { if (GLYPH.test(x) && leftTokens.length < 6) leftTokens.push(x); }));
 
-    setStatus(r1.converted + 'টি অংশ (প্রায় ' + r1.words + 'টি শব্দ) কনভার্ট হয়েছে।' +
-      (r2 && r2.converted ? ' বাদ পড়া ' + r2.converted + 'টি শব্দ দ্বিতীয় ধাপে ঠিক হয়েছে।' : '') +
-      (r1.healed ? ' (' + r1.healed + 'টি দ্বিতীয়বার চেষ্টায়)' : '') +
-      (skipped ? ' বাদ (অন্য ফন্ট): ' + Object.entries(skipFonts).map(([f, c]) => f + ' ×' + c).join(', ') + '।' : '') +
-      (mixed - mixedMap.size > 0 ? ' মিশ্র ফন্টের ' + (mixed - mixedMap.size) + 'টি শব্দ পুরোপুরি ধরা যায়নি, যেমন: ' + mixedSamples.join(' , ') + '।' : '') +
-      (failed.length ? ' ⚠ বদলানো যায়নি: ' + failed.slice(0, 5).join(' | ') : '') +
-      (left.length ? ' ⚠ এখনো ' + left.length + 'টি অনুচ্ছেদে Bijoy অক্ষর আছে: ' + leftTokens.join(' , ') : ''),
+    setStatus(r1.converted + ' part(s) (about ' + r1.words + ' words) converted to Unicode.' +
+      (r2 && r2.converted ? ' ' + r2.converted + ' missed word(s) fixed in the second pass.' : '') +
+      (r1.healed ? ' (' + r1.healed + ' fixed on retry)' : '') +
+      (skipped ? ' Skipped (other fonts): ' + Object.entries(skipFonts).map(([f, c]) => f + ' x' + c).join(', ') + '.' : '') +
+      (mixed - mixedMap.size > 0 ? ' ' + (mixed - mixedMap.size) + ' mixed-font word(s) could not be fully handled, e.g.: ' + mixedSamples.join(' , ') + '.' : '') +
+      (failed.length ? ' ⚠ Could not change: ' + failed.slice(0, 5).join(' | ') : '') +
+      (left.length ? ' ⚠ ' + left.length + ' paragraph(s) still contain Bijoy characters: ' + leftTokens.join(' , ') : ''),
       (failed.length || left.length) ? 'err' : 'ok');
-  }).catch((err) => setStatus('সমস্যা হয়েছে: ' + err.message, 'err'))
-    .finally(() => { btn.disabled = false; });
+  }).catch((err) => setStatus('Error: ' + err.message, 'err'))
+    .finally(() => setBusy(false));
+});
+
+// ---------- Word: Convert to Bijoy (Unicode Bangla -> SutonnyMJ) ----------
+document.getElementById('convertToBijoyBtn').addEventListener('click', () => {
+  setBusy(true);
+  setStatus('Working…', 'info');
+
+  Word.run(async (context) => {
+    const sel = context.document.getSelection();
+    context.trackedObjects.add(sel);
+    const paras = sel.paragraphs;
+    paras.load('items');
+    await context.sync();
+
+    // Bengali text keeps its bold / italic / size in the complex-script flags; read them if this Word supports it
+    let csRead = false;
+    try { const f0 = context.document.getSelection().font; f0.load('boldBidirectional'); await context.sync(); csRead = true; } catch (e) { /* not supported */ }
+
+    const props = 'items/text,items/font/name,items/font/bold,items/font/italic,items/font/size,items/font/color,items/font/underline' +
+      (csRead ? ',items/font/boldBidirectional,items/font/italicBidirectional,items/font/sizeBidirectional' : '');
+    const cols = paras.items.map((p) => {
+      const c = p.getRange('Whole').intersectWith(sel).getTextRanges([' '], true);
+      c.load(props);
+      return c;
+    });
+    await context.sync();
+
+    const pick = (cs, lat) => (csRead && cs !== null && cs !== undefined ? cs : lat);
+    const fmtOf = (w) => ({
+      bold: pick(w.font.boldBidirectional, w.font.bold),
+      italic: pick(w.font.italicBidirectional, w.font.italic),
+      size: pick(w.font.sizeBidirectional, w.font.size),
+      setSize: true
+    });
+
+    const BN = /[\u0980-\u09FF]/;
+    const order = [], segs = [];
+    let english = 0;
+    for (const col of cols) {
+      let cur = null;
+      for (const w of col.items) {
+        if (!w.text || !w.text.trim()) continue;
+        if (!BN.test(w.text)) { english++; cur = null; continue; }               // English, digits, symbols: untouched
+        const rest = w.text.replace(/[\u0980-\u09FF\u200C\u200D]/g, '');
+        if (/[A-Za-z0-9\u00C0-\u024F]/.test(rest)) {                              // Bangla and English glued together
+          order.push({ mixed: w, fmt: fmtOf(w) });
+          cur = null;
+          continue;
+        }
+        const fmt = fmtOf(w);
+        const key = [fmt.bold, fmt.italic, fmt.size, w.font.color, w.font.underline].join('|');
+        if (!cur || cur.key !== key) { cur = { words: [], key, fmt, fn: w.font.name || '' }; segs.push(cur); order.push({ seg: cur }); }
+        cur.words.push(w);
+      }
+    }
+
+    // glued words: find each Bengali run inside the word with Word's own search, leave the English part alone
+    const mixedQ = new Map();
+    order.filter((o) => o.mixed).forEach((o) => {
+      const runs = [...new Set(o.mixed.text.match(/[\u0980-\u09FF\u200C\u200D]+/g) || [])];
+      mixedQ.set(o.mixed, runs.map((r) => { const m = o.mixed.search(r, { matchCase: true }); m.load('items/text'); return { r, m }; }));
+    });
+    segs.forEach((g) => {
+      g.range = g.words.length > 1 ? g.words[0].expandTo(g.words[g.words.length - 1]) : g.words[0];
+      g.range.load('text');
+    });
+    await context.sync();
+
+    const jobs = [];
+    for (const o of order) {
+      if (o.mixed) {
+        mixedQ.get(o.mixed).forEach(({ r, m }) => {
+          m.items.forEach((x) => { if (x.text === r) jobs.push({ range: x, orig: r, fn: o.mixed.font.name || '', n: 1, fmt: o.fmt }); });
+        });
+        continue;
+      }
+      const g = o.seg;
+      const single = g.words.length === 1;
+      if (single || norm(g.range.text) === norm(g.words.map((w) => w.text).join(' '))) {
+        jobs.push({ range: g.range, orig: single ? g.words[0].text : g.range.text, fn: g.fn, n: g.words.length, fmt: g.fmt });
+      } else {
+        g.words.forEach((w) => jobs.push({ range: w, orig: w.text, fn: g.fn, n: 1, fmt: g.fmt }));
+      }
+    }
+    jobs.forEach((j) => { j.conv = convertUnicodeToBijoy(j.orig); });
+    const targets = jobs.filter((j) => j.conv !== j.orig);
+
+    if (!targets.length) {
+      sel.untrack();
+      setStatus('No Unicode Bangla text found in the selection.', 'err');
+      return;
+    }
+
+    const res = await applyJobs(context, targets, 'SutonnyMJ');   // font is set to SutonnyMJ automatically
+    sel.untrack();
+
+    setStatus(res.converted + ' part(s) (about ' + res.words + ' words) converted to Bijoy (SutonnyMJ).' +
+      (english ? ' ' + english + ' English / other word(s) left unchanged.' : '') +
+      (res.healed ? ' (' + res.healed + ' fixed on retry)' : '') +
+      (res.failed.length ? ' ⚠ Could not change: ' + res.failed.slice(0, 5).join(' | ') : ''),
+      res.failed.length ? 'err' : 'ok');
+  }).catch((err) => setStatus('Error: ' + err.message, 'err'))
+    .finally(() => setBusy(false));
 });
 </script>
 </body>
