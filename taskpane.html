@@ -54,7 +54,6 @@
       <input type="checkbox" id="onlyBijoy" checked style="margin-top:3px;">
       <span>English text stays unchanged</span>
     </label>
-    <input id="extraFonts" placeholder="Extra Bijoy font names (with comma)" style="width:100%;margin-top:8px;padding:6px;border:1px solid #ccc;border-radius:6px;font-size:12px;font-family:inherit;">
     <button id="convertSelectionBtn">Convert to Unicode</button>
     <button id="convertToBijoyBtn">Convert to Bijoy</button>
     <div class="hint">This feature for MS Word Add-ins</div>
@@ -66,7 +65,7 @@
     <textarea id="uniBox"></textarea>
     <div class="row mid">
       <button id="quickConvertBtn">Convert</button>
-      <span class="arrow" aria-hidden="true">↔</span>
+      <span class="arrow" aria-hidden="true">↕</span>
       <button id="quickClearBtn" class="secondary" type="button">Clear</button>
     </div>
     <label for="bijoyBox" style="margin-top:10px;">Bijoy Text</label>
@@ -400,10 +399,7 @@ document.getElementById('copyBijoyBtn').addEventListener('click', () => copyBox(
 function isBijoyFont(name) {
   const n = name.toLowerCase().replace(/\s+/g, '');
   if (/omj/.test(n)) return false; // SutonnyOMJ is a Unicode font
-  if (/MJ/.test(name) || /bijoy|sutonny|ansi|adorsho|adarsha/.test(n)) return true;
-  const extra = (document.getElementById('extraFonts').value || '')
-    .split(',').map((x) => x.trim().toLowerCase().replace(/\s+/g, '')).filter(Boolean);
-  return extra.includes(n);
+  return /MJ/.test(name) || /bijoy|sutonny|ansi|adorsho|adarsha/.test(n);
 }
 
 const hasBengali = /[\u0980-\u09FF]/;
