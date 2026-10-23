@@ -100,7 +100,7 @@ const MAP = {};
     'v':'া','w':'ি','x':'ী','y':'ু','z':'ু','~':'ূ','ƒ':'ূ','‚':'ূ',
     '„':'ৃ','…':'ৃ','†':'ে','‡':'ে','ˆ':'ৈ','‰':'ৈ','Š':'ৗ',
     // বিরাম
-    '|':'।','&':'্‌',
+    '|':'।','&':'্',
     // ফলা ও অর্ধ-বর্ণ
     'Ö':'্র','ª':'্র','«':'্র','¨':'্য','¬':'্ল','\u00AD':'্ল',
     'Ÿ':'্ব','¡':'্ব','¦':'্ব','^':'্ব','œ':'্ন','¥':'্ম','§':'্ম',
@@ -405,7 +405,7 @@ function isBijoyFont(name) {
 const hasBengali = /[\u0980-\u09FF]/;
 const GLYPH = /[‡†›¨©ÿ¯ª«š˜™¤¥§œ¶]/;                 // শুধু Bijoy-তে আসে, ইংরেজিতে নয়
 const LATIN_OR_GLYPH = /[A-Za-z‡†›¨©ÿ¯ª«š˜™¤¥§œ¶]/;
-const norm = (t) => t.replace(/\s+/g, ' ').trim();
+const norm = (t) => canonNukta(t.replace(/[\u200C\u200D]/g, '')).replace(/\s+/g, ' ').trim(); // ignore ZWNJ/ZWJ and ড় ঢ় য় form differences
 let slotsCache = null;
 const csOk = {}; // কোন complex-script বৈশিষ্ট্য (boldBidirectional ইত্যাদি) এই Word-এ চলে
 
