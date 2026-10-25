@@ -21,7 +21,7 @@
   button:hover { background:#00542f; }
   button.secondary { background:#eee; color:#222; }
   button.secondary:hover { background:#ddd; }
-  #status { font-size:12px; margin-top:8px; min-height:16px; }
+  #status { font-size:12px; margin-top:8px; min-height:16px; word-break:break-word; }
   #status.ok { color:#00693e; } #status.err { color:#b3261e; } #status.info { color:#666; }
   .row { display:flex; gap:8px; } .row > * { flex:1; }
   .row.mid { align-items:center; }
@@ -407,6 +407,7 @@ const GLYPH = /[‡†›¨©ÿ¯ª«š˜™¤¥§œ¶]/;                 // শ
 const LATIN_OR_GLYPH = /[A-Za-z‡†›¨©ÿ¯ª«š˜™¤¥§œ¶]/;
 const norm = (t) => canonNukta(t.replace(/[\u200C\u200D]/g, '')).replace(/\s+/g, ' ').trim(); // ignore ZWNJ/ZWJ and ড় ঢ় য় form differences
 let slotsCache = null;
+let DEBUG = false; // hold Shift while clicking a Convert button to see what exactly was replaced
 const csOk = {}; // কোন complex-script বৈশিষ্ট্য (boldBidirectional ইত্যাদি) এই Word-এ চলে
 
 // মিশ্র ফন্টের শব্দ ([GLv‡b, e¨vmva©], {eq \f(a,b)} ইত্যাদি): চিহ্ন দিয়ে ভেঙে প্রতিটি অংশ আলাদা করে খোঁজা
@@ -552,6 +553,7 @@ async function applyJobs(context, targets, fontName) {
   }
   res.converted = targets.length - bad.length;
   res.words = targets.reduce((a, j) => a + j.n, 0);
+  res.log = targets.map((j, i) => j.orig + ' => ' + rs[i].text).reverse(); // back to document order
 
   if (bad.length) {
     const rs2 = bad.map((i) => {
@@ -577,7 +579,8 @@ async function applyJobs(context, targets, fontName) {
   return res;
 }
 
-document.getElementById('convertSelectionBtn').addEventListener('click', () => {
+document.getElementById('convertSelectionBtn').addEventListener('click', (ev) => {
+  DEBUG = !!(ev && ev.shiftKey);
   const fontName = document.getElementById('fontSelect').value;
   const onlyBijoy = document.getElementById('onlyBijoy').checked;
   setBusy(true);
@@ -674,6 +677,12 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       left = await leftoverParas();
     }
 
+    let dbg = '';
+    if (DEBUG) {
+      sel.load('text');
+      await context.sync();
+      dbg = ' || DEBUG replaced: ' + (r1.log || []).concat(r2 && r2.log ? r2.log : []).slice(0, 15).join(' ; ') + ' || FINAL TEXT: ' + sel.text.slice(0, 200);
+    }
     sel.untrack();
 
     const failed = r1.failed.concat(r2 ? r2.failed : []);
@@ -686,14 +695,15 @@ document.getElementById('convertSelectionBtn').addEventListener('click', () => {
       (skipped ? ' Skipped (other fonts): ' + Object.entries(skipFonts).map(([f, c]) => f + ' x' + c).join(', ') + '.' : '') +
       (mixed - mixedMap.size > 0 ? ' ' + (mixed - mixedMap.size) + ' mixed-font word(s) could not be fully handled, e.g.: ' + mixedSamples.join(' , ') + '.' : '') +
       (failed.length ? ' ⚠ Could not change: ' + failed.slice(0, 5).join(' | ') : '') +
-      (left.length ? ' ⚠ ' + left.length + ' paragraph(s) still contain Bijoy characters: ' + leftTokens.join(' , ') : ''),
+      (left.length ? ' ⚠ ' + left.length + ' paragraph(s) still contain Bijoy characters: ' + leftTokens.join(' , ') : '') + dbg,
       (failed.length || left.length) ? 'err' : 'ok');
   }).catch((err) => setStatus('Error: ' + err.message, 'err'))
     .finally(() => setBusy(false));
 });
 
 // ---------- Word: Convert to Bijoy (Unicode Bangla -> SutonnyMJ) ----------
-document.getElementById('convertToBijoyBtn').addEventListener('click', () => {
+document.getElementById('convertToBijoyBtn').addEventListener('click', (ev) => {
+  DEBUG = !!(ev && ev.shiftKey);
   setBusy(true);
   setStatus('Working…', 'info');
 
@@ -784,12 +794,18 @@ document.getElementById('convertToBijoyBtn').addEventListener('click', () => {
     }
 
     const res = await applyJobs(context, targets, 'SutonnyMJ');   // font is set to SutonnyMJ automatically
+    let dbg = '';
+    if (DEBUG) {
+      sel.load('text');
+      await context.sync();
+      dbg = ' || DEBUG replaced: ' + (res.log || []).slice(0, 15).join(' ; ') + ' || FINAL TEXT: ' + sel.text.slice(0, 200);
+    }
     sel.untrack();
 
     setStatus(res.converted + ' part(s) (about ' + res.words + ' words) converted to Bijoy (SutonnyMJ).' +
       (english ? ' ' + english + ' English / other word(s) left unchanged.' : '') +
       (res.healed ? ' (' + res.healed + ' fixed on retry)' : '') +
-      (res.failed.length ? ' ⚠ Could not change: ' + res.failed.slice(0, 5).join(' | ') : ''),
+      (res.failed.length ? ' ⚠ Could not change: ' + res.failed.slice(0, 5).join(' | ') : '') + dbg,
       res.failed.length ? 'err' : 'ok');
   }).catch((err) => setStatus('Error: ' + err.message, 'err'))
     .finally(() => setBusy(false));
