@@ -505,6 +505,29 @@ function finishMixed(items) {
   return map;
 }
 
+// ---- Equations: getTextRanges positions drift after an equation (the equation is short as text but long in the
+// document), so words after it point to the wrong place. When the selection contains an equation we list words
+// with Word's own Find instead, which returns exact positions. ----
+async function selectionHasMath(context, sel) {
+  try {
+    const ox = sel.getOoxml();
+    await context.sync();
+    return /<m:oMath[\s>]/.test(ox.value);
+  } catch (e) { return true; }   // cannot tell: use the safe method
+}
+async function wildcardOk(context, sel) {
+  try {
+    const t = sel.search('[! ]@', { matchWildcards: true });
+    t.load('items/text');
+    await context.sync();
+    return t.items.length > 0;
+  } catch (e) { return false; }
+}
+function wordRanges(p, sel, safe) {
+  if (!safe) return p.getRange('Whole').intersectWith(sel).getTextRanges([' '], true);
+  return p.getRange('Content').intersectWith(sel).search('[! ]@', { matchWildcards: true }); // words, never the paragraph mark
+}
+
 // টুকরোগুলো একবারে বদলানো + ফন্ট + একবার যাচাই + শুধু ব্যর্থগুলোর জন্য একটি পুনরায় চেষ্টা
 async function applyJobs(context, targets, fontName) {
   const res = { converted: 0, healed: 0, failed: [], words: 0 };
@@ -594,9 +617,12 @@ document.getElementById('convertSelectionBtn').addEventListener('click', (ev) =>
     paras.load('items');
     await context.sync();
 
+    const hasMath = await selectionHasMath(context, sel);
+    const safe = hasMath && await wildcardOk(context, sel);   // equation-safe word listing
+
     // ধাপ ১: অনুচ্ছেদ ধরে, পাশাপাশি Bijoy শব্দ জুড়ে একটি টুকরো
     const cols = paras.items.map((p) => {
-      const c = p.getRange('Whole').intersectWith(sel).getTextRanges([' '], true);
+      const c = wordRanges(p, sel, safe);
       c.load('items/text,items/font/name,items/font/bold,items/font/italic,items/font/size,items/font/color,items/font/underline');
       return c;
     });
@@ -616,6 +642,7 @@ document.getElementById('convertSelectionBtn').addEventListener('click', (ev) =>
         const key = [fn, w.font.bold, w.font.italic, w.font.size, w.font.color, w.font.underline].join('|');
         if (!cur || cur.key !== key) { cur = { words: [], fn, key, fmt: { bold: w.font.bold, italic: w.font.italic, size: w.font.size } }; segs.push(cur); order.push({ seg: cur }); }
         cur.words.push(w);
+        if (safe) cur = null;   // with equations around: one word per job, never a range that could swallow an equation
       }
     }
 
@@ -658,11 +685,14 @@ document.getElementById('convertSelectionBtn').addEventListener('click', (ev) =>
     // এখনো Bijoy ফন্টে থাকা শব্দ
     let r2 = null;
     if (left.length || r1.failed.length || (mixed - mixedMap.size) > 0) {
-      const ws = sel.getTextRanges([' '], true);
-      ws.load('items/text,items/font/name,items/font/bold,items/font/italic,items/font/size,items/font/color,items/font/underline');
+      const wsCols = safe
+        ? paras.items.map((p) => wordRanges(p, sel, true))
+        : [sel.getTextRanges([' '], true)];
+      wsCols.forEach((c) => c.load('items/text,items/font/name,items/font/bold,items/font/italic,items/font/size,items/font/color,items/font/underline'));
       await context.sync();
+      const wsItems = [].concat(...wsCols.map((c) => c.items));
       const t2 = [], mixed2 = [];
-      for (const w of ws.items) {
+      for (const w of wsItems) {
         if (!w.text || !w.text.trim()) continue;
         const fn = w.font.name || '';
         if (fn === '') { mixed2.push(w); continue; }
@@ -695,7 +725,8 @@ document.getElementById('convertSelectionBtn').addEventListener('click', (ev) =>
       (skipped ? ' Skipped (other fonts): ' + Object.entries(skipFonts).map(([f, c]) => f + ' x' + c).join(', ') + '.' : '') +
       (mixed - mixedMap.size > 0 ? ' ' + (mixed - mixedMap.size) + ' mixed-font word(s) could not be fully handled, e.g.: ' + mixedSamples.join(' , ') + '.' : '') +
       (failed.length ? ' ⚠ Could not change: ' + failed.slice(0, 5).join(' | ') : '') +
-      (left.length ? ' ⚠ ' + left.length + ' paragraph(s) still contain Bijoy characters: ' + leftTokens.join(' , ') : '') + dbg,
+      (left.length ? ' ⚠ ' + left.length + ' paragraph(s) still contain Bijoy characters: ' + leftTokens.join(' , ') : '') +
+      (safe ? ' (Equations found: safe mode.)' : (hasMath ? ' (Equations found but safe mode unavailable: words after an equation may be skipped.)' : '')) + dbg,
       (failed.length || left.length) ? 'err' : 'ok');
   }).catch((err) => setStatus('Error: ' + err.message, 'err'))
     .finally(() => setBusy(false));
@@ -720,8 +751,10 @@ document.getElementById('convertToBijoyBtn').addEventListener('click', (ev) => {
 
     const props = 'items/text,items/font/name,items/font/bold,items/font/italic,items/font/size,items/font/color,items/font/underline' +
       (csRead ? ',items/font/boldBidirectional,items/font/italicBidirectional,items/font/sizeBidirectional' : '');
+    const hasMath = await selectionHasMath(context, sel);
+    const safe = hasMath && await wildcardOk(context, sel);   // equation-safe word listing
     const cols = paras.items.map((p) => {
-      const c = p.getRange('Whole').intersectWith(sel).getTextRanges([' '], true);
+      const c = wordRanges(p, sel, safe);
       c.load(props);
       return c;
     });
@@ -753,6 +786,7 @@ document.getElementById('convertToBijoyBtn').addEventListener('click', (ev) => {
         const key = [fmt.bold, fmt.italic, fmt.size, w.font.color, w.font.underline].join('|');
         if (!cur || cur.key !== key) { cur = { words: [], key, fmt, fn: w.font.name || '' }; segs.push(cur); order.push({ seg: cur }); }
         cur.words.push(w);
+        if (safe) cur = null;   // with equations around: one word per job
       }
     }
 
@@ -804,6 +838,7 @@ document.getElementById('convertToBijoyBtn').addEventListener('click', (ev) => {
 
     setStatus(res.converted + ' part(s) (about ' + res.words + ' words) converted to Bijoy (SutonnyMJ).' +
       (english ? ' ' + english + ' English / other word(s) left unchanged.' : '') +
+      (safe ? ' (Equations found: safe mode.)' : '') +
       (res.healed ? ' (' + res.healed + ' fixed on retry)' : '') +
       (res.failed.length ? ' ⚠ Could not change: ' + res.failed.slice(0, 5).join(' | ') : '') + dbg,
       res.failed.length ? 'err' : 'ok');
